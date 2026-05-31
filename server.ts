@@ -102,6 +102,45 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  const applyVipUpgrade = async ({ userId, memo, amount, days, sepayTxId }: { userId: string; memo: string; amount: number; days: number; sepayTxId?: string }) => {
+    const paymentSnap = await getDoc(doc(db, 'payments', memo));
+    if (paymentSnap.exists() && paymentSnap.data().status === 'completed') {
+      return { alreadyProcessed: true, vipExpiry: paymentSnap.data().vipExpiry };
+    }
+
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      throw new Error('Không tìm thấy thông tin tài khoản học sinh.');
+    }
+
+    const userData = userSnap.data();
+    const currentExpiry = userData.vipExpiry ? new Date(userData.vipExpiry).getTime() : 0;
+    const baseTime = currentExpiry > Date.now() ? currentExpiry : Date.now();
+    const newExpiryDate = new Date(baseTime + days * 24 * 60 * 60 * 1000);
+    const newExpiryStr = newExpiryDate.toISOString();
+
+    await setDoc(userRef, {
+      vipExpiry: newExpiryStr,
+      vipType: `${days} ngày`
+    }, { merge: true });
+
+    await setDoc(doc(db, 'payments', memo), {
+      userId,
+      userEmail: userData.email || '',
+      userName: userData.name || '',
+      amount: Number(amount),
+      days: Number(days),
+      status: 'completed',
+      memo,
+      createdAt: new Date().toISOString(),
+      vipExpiry: newExpiryStr,
+      sepayTxId: sepayTxId || ''
+    }, { merge: true });
+
+    return { alreadyProcessed: false, vipExpiry: newExpiryStr };
+  };
+
   app.post("/api/payment/verify", async (req, res) => {
     const { userId, memo, amount, days } = req.body;
     if (!userId || !memo || !amount || !days) {
@@ -109,26 +148,18 @@ async function startServer() {
     }
 
     try {
-      // 1. Load SePay CONFIG from settings/global
       const settingsRef = doc(db, 'settings', 'global');
       const settingsSnap = await getDoc(settingsRef);
       if (!settingsSnap.exists()) {
         return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
       }
-      
+
       const settingsData = settingsSnap.data();
       const apiKey = settingsData.sepayApiKey;
       if (!apiKey) {
         return res.status(400).json({ error: "Giáo viên chưa kết nối cổng SePay API." });
       }
 
-      // Check if this payment is already processed in history to avoid cheating
-      const paymentSnap = await getDoc(doc(db, 'payments', memo));
-      if (paymentSnap.exists() && paymentSnap.data().status === 'completed') {
-        return res.json({ success: true, message: "Hóa đơn này đã được xử lý thành công trước đó.", vipExpiry: paymentSnap.data().vipExpiry });
-      }
-
-      // 2. Fetch transaction history from SePay
       const response = await fetch("https://apiquery.sepay.vn/transactions/list", {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -138,71 +169,110 @@ async function startServer() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("SePay Response Error:", errorText);
+        console.error("SePay verify response error:", response.status, errorText);
         return res.status(500).json({ error: "Không thể kết nối cổng SePay. Mã lỗi: " + response.status });
       }
 
       const rawData: any = await response.json();
       const transactions = rawData.transactions || [];
-
-      // 3. Scan transactions
-      const cleanMemo = memo.trim().toUpperCase();
+      const cleanMemo = String(memo).trim().toUpperCase();
       const matchingTx = transactions.find((tx: any) => {
         const txContent = (tx.transaction_content || '').toUpperCase();
         const txAmount = Number(tx.amount_in || 0);
         return txContent.includes(cleanMemo) && txAmount >= Number(amount);
       });
 
-      if (matchingTx) {
-        // Upgrade User!
-        const userRef = doc(db, 'users', userId);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          return res.status(404).json({ error: "Không tìm thấy thông tin tài khoản học sinh." });
-        }
-
-        const userData = userSnap.data();
-        const currentExpiry = userData.vipExpiry ? new Date(userData.vipExpiry).getTime() : 0;
-        const baseTime = currentExpiry > Date.now() ? currentExpiry : Date.now();
-        const newExpiryDate = new Date(baseTime + days * 24 * 60 * 60 * 1000);
-        const newExpiryStr = newExpiryDate.toISOString();
-
-        // Update user database
-        await setDoc(userRef, {
-          vipExpiry: newExpiryStr,
-          vipType: `${days} ngày`
-        }, { merge: true });
-
-        // Record payment log
-        await setDoc(doc(db, 'payments', memo), {
-          userId,
-          userEmail: userData.email || '',
-          userName: userData.name || '',
-          amount: Number(amount),
-          days: Number(days),
-          status: 'completed',
-          memo,
-          createdAt: new Date().toISOString(),
-          vipExpiry: newExpiryStr,
-          sepayTxId: matchingTx.id || ''
-        });
-
-        return res.json({
-          success: true,
-          message: "Thanh toán thành công! Tài khoản đã được nâng cấp VIP.",
-          vipExpiry: newExpiryStr
-        });
-      } else {
+      if (!matchingTx) {
         return res.json({
           success: false,
           message: "Chưa nhận được giao dịch chuyển khoản tương thích. Vui lòng đảm bảo bạn điền đúng nội dung và số tiền, sau đó thử kiểm tra lại."
         });
       }
+
+      const upgraded = await applyVipUpgrade({
+        userId,
+        memo,
+        amount: Number(amount),
+        days: Number(days),
+        sepayTxId: matchingTx.id ? String(matchingTx.id) : ''
+      });
+
+      return res.json({
+        success: true,
+        message: upgraded.alreadyProcessed ? "Hóa đơn này đã được xử lý thành công trước đó." : "Thanh toán thành công! Tài khoản đã được nâng cấp VIP.",
+        vipExpiry: upgraded.vipExpiry
+      });
     } catch (err: any) {
       console.error("Verify endpoint error:", err);
       return res.status(500).json({ error: "Lỗi hệ thống đối soát thanh toán: " + err.message });
     }
   });
+
+  app.post("/api/payment/webhook/sepay", async (req, res) => {
+    const token = process.env.SEPAY_WEBHOOK_TOKEN;
+    if (!token) {
+      return res.status(500).json({ success: false, message: "Server chưa cấu hình SEPAY_WEBHOOK_TOKEN." });
+    }
+
+    const authHeader = String(req.headers.authorization || '');
+    const requestToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : String(req.headers['x-sepay-token'] || '');
+    if (requestToken !== token) {
+      return res.status(401).json({ success: false, message: "Unauthorized webhook token." });
+    }
+
+    try {
+      const payload: any = req.body || {};
+      const memo = String(payload.content || payload.transaction_content || payload.description || '').trim();
+      const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
+      const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || '');
+
+      if (!memo || !amount || !sepayTxId) {
+        return res.status(400).json({ success: false, message: "Webhook thiếu thông tin memo/amount/transaction id." });
+      }
+
+      const memoUpper = memo.toUpperCase();
+      const paymentsRef = collection(db, 'payments');
+      const pendingByMemo = await getDocs(query(paymentsRef, where('memo', '==', memoUpper)));
+      const existingByTx = await getDocs(query(paymentsRef, where('sepayTxId', '==', sepayTxId), where('status', '==', 'completed')));
+
+      if (!existingByTx.empty) {
+        return res.json({ success: true, message: "Transaction đã được xử lý trước đó." });
+      }
+
+      if (pendingByMemo.empty) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
+      }
+
+      const paymentDoc = pendingByMemo.docs[0];
+      const paymentData: any = paymentDoc.data();
+
+      if (Number(amount) < Number(paymentData.amount || 0)) {
+        return res.status(400).json({ success: false, message: "Số tiền nhận được nhỏ hơn hóa đơn yêu cầu." });
+      }
+
+      const upgraded = await applyVipUpgrade({
+        userId: paymentData.userId,
+        memo: paymentData.memo,
+        amount: Number(paymentData.amount),
+        days: Number(paymentData.days),
+        sepayTxId
+      });
+
+      return res.json({
+        success: true,
+        message: upgraded.alreadyProcessed ? "Hóa đơn đã xử lý trước đó." : "Đã xử lý webhook và nâng cấp VIP thành công.",
+        vipExpiry: upgraded.vipExpiry
+      });
+    } catch (err: any) {
+      console.error("SePay webhook error:", err);
+      return res.status(500).json({ success: false, message: "Lỗi xử lý webhook SePay: " + err.message });
+    }
+  });
+
+  app.get("/api/payment/webhook/sepay", (req, res) => {
+    res.json({ success: true, message: "SePay webhook endpoint is ready." });
+  });
+
 
   app.post("/api/auth/login", (req, res) => {
      const { email, password } = req.body;
