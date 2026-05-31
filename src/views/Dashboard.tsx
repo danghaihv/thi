@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, BookOpen, Clock, TrendingUp, Activity } from 'lucide-react';
+import { Users, BookOpen, Clock, TrendingUp, Activity, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -13,68 +13,113 @@ export default function Dashboard() {
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // We use getDocs for users/exams initially and onSnapshot for submissions which change often. 
-    // Or we can use onSnapshot for all of them for full realtime.
-    
-    // Realtime listeners
-    const unsubUsers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'student')), (usersSnap) => {
-       setStats(prev => ({ ...prev, totalStudents: usersSnap.size }));
-    });
-
-    const unsubExams = onSnapshot(collection(db, 'exams'), (examsSnap) => {
-       setStats(prev => ({ ...prev, totalExams: examsSnap.size }));
-    });
-
-    const unsubSubs = onSnapshot(collection(db, 'submissions'), (subsSnap) => {
-        let totalTime = 0;
-        const subs = subsSnap.docs.map(d => d.data());
-        subs.forEach(s => {
-           totalTime += (s.timeSpent || 0);
-        });
-
-        setStats(prev => ({
-          ...prev,
-          totalSubmissions: subsSnap.size,
-          totalTimeDeci: totalTime
-        }));
-
-        // Generate chart data
-        const result = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        for (let i = 6; i >= 0; i--) {
-           const date = new Date(today);
-           date.setDate(date.getDate() - i);
-           
-           const startOfDay = new Date(date);
-           const endOfDay = new Date(date);
-           endOfDay.setHours(23, 59, 59, 999);
-           
-           const dayHistory = subs.filter(h => {
-              const d = new Date(h.submittedAt);
-              return d >= startOfDay && d <= endOfDay;
-           });
-           
-           const dayName = date.toLocaleDateString('vi-VN', { weekday: 'short' });
-           result.push({
-              name: dayName,
-              luyen: dayHistory.length,
-              thi: dayHistory.length
-           });
+    // Only load if user is authenticated
+    if (!auth.currentUser) {
+      console.log('Waiting for auth to be ready...');
+      const unsub = auth.onAuthStateChanged((user) => {
+        if (user) {
+          console.log('Auth ready, loading dashboard data');
+          loadData();
         }
-        setChartData(result);
-        setIsLoading(false);
-    });
-
-    return () => {
-       unsubUsers();
-       unsubExams();
-       unsubSubs();
-    };
+      });
+      return () => unsub();
+    }
+    
+    loadData();
   }, []);
+
+  const loadData = () => {
+    try {
+      setError(null);
+      setIsLoading(true);
+
+      // Realtime listeners with error handling
+      const unsubUsers = onSnapshot(
+        query(collection(db, 'users'), where('role', '==', 'student')),
+        (usersSnap) => {
+          setStats(prev => ({ ...prev, totalStudents: usersSnap.size }));
+        },
+        (error) => {
+          console.error('Error loading students:', error);
+          setError('Không thể tải danh sách học sinh');
+        }
+      );
+
+      const unsubExams = onSnapshot(
+        collection(db, 'exams'),
+        (examsSnap) => {
+          setStats(prev => ({ ...prev, totalExams: examsSnap.size }));
+        },
+        (error) => {
+          console.error('Error loading exams:', error);
+          setError('Không thể tải danh sách đề thi');
+        }
+      );
+
+      const unsubSubs = onSnapshot(
+        collection(db, 'submissions'),
+        (subsSnap) => {
+          let totalTime = 0;
+          const subs = subsSnap.docs.map(d => d.data());
+          subs.forEach(s => {
+             totalTime += (s.timeSpent || 0);
+          });
+
+          setStats(prev => ({
+            ...prev,
+            totalSubmissions: subsSnap.size,
+            totalTimeDeci: totalTime
+          }));
+
+          // Generate chart data
+          const result = [];
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          for (let i = 6; i >= 0; i--) {
+             const date = new Date(today);
+             date.setDate(date.getDate() - i);
+             
+             const startOfDay = new Date(date);
+             const endOfDay = new Date(date);
+             endOfDay.setHours(23, 59, 59, 999);
+             
+             const dayHistory = subs.filter(h => {
+                const d = new Date(h.submittedAt);
+                return d >= startOfDay && d <= endOfDay;
+             });
+             
+             const dayName = date.toLocaleDateString('vi-VN', { weekday: 'short' });
+             result.push({
+                name: dayName,
+                luyen: dayHistory.length,
+                thi: dayHistory.length
+             });
+          }
+          setChartData(result);
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('Error loading submissions:', error);
+          setError('Không thể tải kết quả bài thi');
+          setIsLoading(false);
+        }
+      );
+
+      return () => {
+         unsubUsers();
+         unsubExams();
+         unsubSubs();
+      };
+    } catch (err) {
+      console.error('Dashboard error:', err);
+      setError('Có lỗi khi tải dữ liệu');
+      setIsLoading(false);
+    }
+  };
 
   const totalSeconds = stats.totalTimeDeci;
   const hours = Math.floor(totalSeconds / 3600);
@@ -83,6 +128,17 @@ export default function Dashboard() {
 
   if (isLoading) {
     return <div className="py-20 text-center animate-pulse text-slate-500">Đang tải biểu đồ...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="py-20 text-center">
+        <div className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-6 py-3 rounded-lg border border-amber-200">
+          <AlertCircle className="w-5 h-5" />
+          <span>{error}</span>
+        </div>
+      </div>
+    );
   }
 
   return (

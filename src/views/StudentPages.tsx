@@ -7,24 +7,47 @@ import { LatexRenderer } from '../components/LatexRenderer';
 
 export function StudentDashboard() {
    const [mockHistory, setMockHistory] = useState<any[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
    
    useEffect(() => {
-     const fetchHistory = async () => {
-       if (!auth.currentUser) return;
-       try {
-         const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
-         const snapshot = await getDocs(q);
-         const list: any[] = [];
-         snapshot.forEach(doc => {
-           list.push({ id: doc.id, ...doc.data() });
-         });
-         setMockHistory(list);
-       } catch (err) {
-         handleFirestoreError(err, OperationType.LIST, 'submissions');
-       }
-     };
+     // Wait for auth to be ready
+     if (!auth.currentUser) {
+       const unsub = auth.onAuthStateChanged((user) => {
+         if (user) {
+           fetchHistory();
+         }
+       });
+       return () => unsub();
+     }
+     
      fetchHistory();
    }, []);
+
+   const fetchHistory = async () => {
+     if (!auth.currentUser) {
+       setError('Chưa đăng nhập');
+       setIsLoading(false);
+       return;
+     }
+     
+     try {
+       setError(null);
+       setIsLoading(true);
+       const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
+       const snapshot = await getDocs(q);
+       const list: any[] = [];
+       snapshot.forEach(doc => {
+         list.push({ id: doc.id, ...doc.data() });
+       });
+       setMockHistory(list);
+       setIsLoading(false);
+     } catch (err: any) {
+       console.error('Error fetching history:', err);
+       setError(err.message || 'Không thể tải dữ liệu');
+       setIsLoading(false);
+     }
+   };
 
    const getLast7DaysData = () => {
      const result = [];
@@ -63,6 +86,26 @@ export function StudentDashboard() {
    const hours = Math.floor(totalSeconds / 3600);
    const minutes = Math.floor((totalSeconds % 3600) / 60);
    const timeString = mockHistory.length === 0 ? '0 phút' : (hours > 0 ? `${hours}h ${minutes}p` : `${minutes} phút`);
+
+   if (isLoading) {
+     return (
+       <div className="py-20 text-center">
+         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+         <p className="text-slate-500">Đang tải dữ liệu...</p>
+       </div>
+     );
+   }
+
+   if (error) {
+     return (
+       <div className="py-20 text-center">
+         <div className="inline-flex items-center gap-2 bg-red-50 text-red-700 px-6 py-3 rounded-lg border border-red-200">
+           <AlertCircle className="w-5 h-5" />
+           <span>{error}</span>
+         </div>
+       </div>
+     );
+   }
 
    return (
       <div className="space-y-8 animate-in fade-in duration-500">
