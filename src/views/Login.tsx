@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, GraduationCap } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 
 export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
   const navigate = useNavigate();
@@ -20,44 +20,39 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
       
       // Get or create user profile
       const userDocRef = doc(db, 'users', user.uid);
-      let userDoc;
-      try {
-        userDoc = await getDoc(userDocRef);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.GET, 'users/' + user.uid);
-      }
+      const userDoc = await getDoc(userDocRef);
       
       let userData;
       if (!userDoc?.exists()) {
-         userData = {
-           email: user.email,
-           name: user.displayName || 'Google User',
-           role: user.email === 'pdanghai.mmo@gmail.com' ? 'teacher' : 'student'
-         };
-         try {
-           await setDoc(userDocRef, userData);
-         } catch (err) {
-           handleFirestoreError(err, OperationType.CREATE, 'users/' + user.uid);
-         }
+        userData = {
+          email: user.email,
+          name: user.displayName || 'Google User',
+          role: user.email === 'pdanghai.mmo@gmail.com' ? 'teacher' : 'student'
+        };
+        await setDoc(userDocRef, userData);
       } else {
-         userData = userDoc.data();
-         if (user.email === 'pdanghai.mmo@gmail.com' && userData.role !== 'teacher') {
-            userData.role = 'teacher';
-            try {
-              await setDoc(userDocRef, { role: 'teacher' }, { merge: true });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.UPDATE, 'users/' + user.uid);
-            }
-         }
+        userData = userDoc.data() || {};
+        if (user.email === 'pdanghai.mmo@gmail.com' && userData.role !== 'teacher') {
+          userData.role = 'teacher';
+          await setDoc(userDocRef, { role: 'teacher' }, { merge: true });
+        }
       }
+      
+      if (!userData) {
+        throw new Error('Failed to create user data');
+      }
+      
       const loginData = { ...userData, uid: user.uid };
       onLogin(loginData);
+      localStorage.setItem('hmath_user', JSON.stringify(loginData));
+      
       // Auto-navigate to dashboard after successful login
       setTimeout(() => {
         navigate(userData.role === 'student' ? '/' : '/admin');
       }, 100);
     } catch (err: any) {
-      setError(err.message);
+      console.error('Login error:', err);
+      setError(err.message || 'Đăng nhập thất bại. Vui lòng thử lại.');
     } finally {
       setGoogleLoading(false);
     }
