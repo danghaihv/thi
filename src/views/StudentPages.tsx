@@ -188,6 +188,7 @@ export function StudentHistory() {
    const [loadedExam, setLoadedExam] = useState<any | null>(null);
    const [isLoadingExam, setIsLoadingExam] = useState<boolean>(false);
    const [currentUser, setCurrentUser] = useState<any>(null);
+   const [examTitleMap, setExamTitleMap] = useState<Record<string, string>>({});
 
    useEffect(() => {
       if (!selectedSubmission) {
@@ -225,9 +226,28 @@ export function StudentHistory() {
          const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
          const snapshot = await getDocs(q);
          const list: any[] = [];
+         const examIds = new Set<string>();
+
          snapshot.forEach(doc => {
-           list.push({ id: doc.id, ...doc.data() });
+           const row = { id: doc.id, ...doc.data() } as any;
+           list.push(row);
+           if (row.examId) examIds.add(String(row.examId));
          });
+
+         const nextTitleMap: Record<string, string> = {};
+         await Promise.all(Array.from(examIds).map(async (examId) => {
+           try {
+             const examDoc = await getDoc(doc(db, 'exams', examId));
+             if (examDoc.exists()) {
+               const examData: any = examDoc.data();
+               nextTitleMap[examId] = examData.title || examId;
+             }
+           } catch {
+             nextTitleMap[examId] = examId;
+           }
+         }));
+
+         setExamTitleMap(nextTitleMap);
          setMockHistory(list);
        } catch (err) {
          handleFirestoreError(err, OperationType.LIST, 'submissions');
@@ -269,7 +289,7 @@ export function StudentHistory() {
                      {mockHistory.map(h => (
                        <tr key={h.id} className="border-b border-slate-100 last:border-none hover:bg-slate-50/50 transition-colors">
                           <td className="p-5 pl-6 font-semibold text-slate-800">
-                            {h.examTitle || h.examName || h.title || h.examId}
+                            {h.examTitle || h.examName || h.title || examTitleMap[String(h.examId)] || h.examId}
                           </td>
                           <td className="p-5 font-semibold text-slate-700">
                             {h.examId}
