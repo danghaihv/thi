@@ -465,7 +465,8 @@ export default function ExamWorkspace() {
                    if (isVipUser || isStaff) {
                      setShowDetailedResult(true);
                    } else {
-                     setShowVipModalToViewSolution(true);
+                     window.alert('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP. Bạn sẽ được chuyển đến trang nâng cấp.');
+                     navigate('/profile');
                    }
                  }}
                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-medium transition-colors shadow-sm"
