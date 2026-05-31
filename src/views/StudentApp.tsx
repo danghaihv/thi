@@ -161,8 +161,6 @@ function StudentHome() {
     isPublic: data.isPublic,
   });
 
-  const isLegacyPublic = (exam: ExamSummary) => exam.isPublic !== false;
-
   const toSortedExamList = (snapshot: any): ExamSummary[] => {
     const nextExams: ExamSummary[] = [];
     snapshot.forEach((doc: any) => {
@@ -186,12 +184,7 @@ function StudentHome() {
     const examsQuery = isPrivileged ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
 
     const resolveExamList = async (baseSnap: any) => {
-      let nextExams = toSortedExamList(baseSnap);
-      if (!isPrivileged && nextExams.length === 0) {
-        const legacySnap = await getDocs(query(examsRef));
-        nextExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
-      }
-      return nextExams;
+      return toSortedExamList(baseSnap);
     };
 
     const start = async () => {
