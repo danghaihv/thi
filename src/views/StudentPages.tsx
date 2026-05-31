@@ -258,22 +258,6 @@ export function StudentHistory() {
          }));
 
          setExamTitleMap(nextTitleMap);
-         return;
-         const nextTitleMap: Record<string, string> = {};
-         await Promise.all(Array.from(examIds).map(async (examId) => {
-           try {
-             const examDoc = await getDoc(doc(db, 'exams', examId));
-             if (examDoc.exists()) {
-               const examData: any = examDoc.data();
-               nextTitleMap[examId] = examData.title || examId;
-             }
-           } catch {
-             nextTitleMap[examId] = examId;
-           }
-         }));
-
-         setExamTitleMap(nextTitleMap);
-         setMockHistory(list);
        } catch (err) {
          handleFirestoreError(err, OperationType.LIST, 'submissions');
        }
