@@ -3,29 +3,34 @@ import path from "path";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
-let firebaseConfig: any = {};
-try {
-  firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
-} catch {
-  firebaseConfig = {};
+function getDb() {
+  let firebaseConfig: any = {};
+  try {
+    firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
+  } catch {
+    firebaseConfig = {};
+  }
+
+  const resolvedConfig = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || firebaseConfig.apiKey,
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain,
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId,
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket,
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId,
+    appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || firebaseConfig.appId,
+  };
+
+  if (!resolvedConfig.projectId || !resolvedConfig.apiKey || !resolvedConfig.appId) {
+    throw new Error("Firebase env/config chưa đầy đủ trên runtime serverless.");
+  }
+
+  const firebaseApp = getApps().length ? getApp() : initializeApp(resolvedConfig);
+  return getFirestore(firebaseApp);
 }
-
-const resolvedConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || firebaseConfig.apiKey,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId,
-  appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || firebaseConfig.appId,
-};
-
-const firebaseApp = getApps().length ? getApp() : initializeApp(resolvedConfig);
-const db = getFirestore(firebaseApp);
-
-export { db };
 
 export async function applyVipUpgrade({ userId, memo, amount, days, sepayTxId }: { userId: string; memo: string; amount: number; days: number; sepayTxId?: string }) {
   const memoUpper = String(memo).trim().toUpperCase();
+  const db = getDb();
   const paymentSnap = await getDoc(doc(db, "payments", memoUpper));
   if (paymentSnap.exists() && paymentSnap.data().status === "completed") {
     return { alreadyProcessed: true, vipExpiry: paymentSnap.data().vipExpiry };
@@ -66,6 +71,7 @@ export async function applyVipUpgrade({ userId, memo, amount, days, sepayTxId }:
 
 export async function findPendingPaymentByMemo(memo: string) {
   const memoUpper = memo.trim().toUpperCase();
+  const db = getDb();
   const paymentsRef = collection(db, "payments");
   const pendingByMemo = await getDocs(query(paymentsRef, where("memo", "==", memoUpper)));
   if (pendingByMemo.empty) return null;
@@ -74,6 +80,7 @@ export async function findPendingPaymentByMemo(memo: string) {
 
 export async function hasProcessedTx(sepayTxId: string) {
   if (!sepayTxId) return false;
+  const db = getDb();
   const paymentsRef = collection(db, "payments");
   const existingByTx = await getDocs(query(paymentsRef, where("sepayTxId", "==", sepayTxId), where("status", "==", "completed")));
   return !existingByTx.empty;
