@@ -20,8 +20,7 @@ const app = initializeApp(firebaseConfig);
 // In external environments (like Vercel), if the user has customized the project ID, they will usually
 // want the (default) database unless they specify a database ID.
 const hasEnvConfig = !!metaEnv.VITE_FIREBASE_PROJECT_ID;
-const dbId = metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 
-             (!hasEnvConfig && firebaseConfigJson.firestoreDatabaseId ? firebaseConfigJson.firestoreDatabaseId : undefined);
+const dbId = metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
 export const db = dbId ? getFirestore(app, dbId) : getFirestore(app);
 export const auth = getAuth(app);
