@@ -188,8 +188,6 @@ export function StudentHistory() {
    const [loadedExam, setLoadedExam] = useState<any | null>(null);
    const [isLoadingExam, setIsLoadingExam] = useState<boolean>(false);
    const [currentUser, setCurrentUser] = useState<any>(null);
-   const [vipNotice, setVipNotice] = useState('');
-   const [showVipNoticeModal, setShowVipNoticeModal] = useState(false);
 
    useEffect(() => {
       if (!selectedSubmission) {
@@ -290,8 +288,8 @@ export function StudentHistory() {
                                    if (canViewDetail) {
                                      setSelectedSubmission(h);
                                    } else {
-                                     setVipNotice('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP. Vui lòng nâng cấp để sử dụng.');
-                                     setShowVipNoticeModal(true);
+                                     window.alert('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP. Bạn sẽ được chuyển đến trang nâng cấp.');
+                                     window.location.hash = '#/profile';
                                    }
                                  }}
                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg text-sm font-medium transition-colors"
@@ -309,32 +307,6 @@ export function StudentHistory() {
                </table>
             </div>
          </div>
-
-         {showVipNoticeModal && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-               <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 p-6 text-center">
-                  <h3 className="text-lg font-bold text-slate-800 mb-3">Nâng cấp tài khoản VIP</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-6">{vipNotice}</p>
-                  <div className="flex gap-3 justify-end">
-                     <button
-                        onClick={() => setShowVipNoticeModal(false)}
-                        className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold"
-                     >
-                        Đóng
-                     </button>
-                     <button
-                        onClick={() => {
-                           setShowVipNoticeModal(false);
-                           window.location.hash = '#/profile';
-                        }}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-                     >
-                        Đi tới nâng VIP
-                     </button>
-                  </div>
-               </div>
-            </div>
-         )}
 
          {selectedSubmission && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
