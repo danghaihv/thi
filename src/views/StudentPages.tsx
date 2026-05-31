@@ -574,7 +574,6 @@ export function StudentProfile() {
                contentType,
                snippet
             });
-            setCheckMessage("Máy chủ đối soát đang trả dữ liệu không hợp lệ. Vui lòng thử lại sau ít phút.");
             return;
          }
 
@@ -913,7 +912,7 @@ export function StudentProfile() {
                            <div className="space-y-3 pt-2">
                               <div className="flex items-center gap-3 text-xs text-slate-500 leading-snug">
                                  <RefreshCw className={`w-4 h-4 text-indigo-600 ${isCheckingPayment ? 'animate-spin' : ''}`} />
-                                 <p>Hệ thống tự động đồng bộ tài khoản sau {7} giây. Không tải lại trang này khi tiền đang xử lý.</p>
+                                 <p>Hệ thống tự động đồng bộ tài khoản. Không tải lại trang này khi tiền đang xử lý.</p>
                               </div>
 
                               {checkMessage && (
