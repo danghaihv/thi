@@ -135,6 +135,7 @@ export function ExamManager() {
       ownerId: auth.currentUser?.uid || '',
       difficulty: 'Trung bình',
       category: 'Đề ôn tập bài học/chương',
+      isPublic: true,
       config: {
         shuffleQuestions: true,
         shuffleOptions: true,
@@ -149,14 +150,19 @@ export function ExamManager() {
       const docRef = doc(db, 'exams', examToSave.id);
       const exists = exams.some(e => e.id === examToSave.id);
       
+      const normalizedExam = {
+        ...examToSave,
+        isPublic: examToSave.isPublic ?? true,
+      };
+
       if (exists) {
          await updateDoc(docRef, {
-            ...examToSave
+            ...normalizedExam
          });
-         setExams(exams.map(e => e.id === examToSave.id ? examToSave : e));
+         setExams(exams.map(e => e.id === examToSave.id ? normalizedExam : e));
       } else {
-         await setDoc(docRef, examToSave);
-         setExams([...exams, examToSave]);
+         await setDoc(docRef, normalizedExam);
+         setExams([...exams, normalizedExam]);
       }
       setEditingExam(null);
     } catch (e) {

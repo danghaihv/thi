@@ -127,6 +127,7 @@ type ExamSummary = {
   difficulty: 'Cơ bản' | 'Trung bình' | 'Nâng cao';
   category: string;
   createdAtMs: number;
+  isPublic?: boolean;
 };
 
 function StudentHome() {
@@ -157,7 +158,10 @@ function StudentHome() {
     difficulty: data.difficulty || 'Trung bình',
     category: data.category || 'Đề ôn tập bài học/chương',
     createdAtMs: parseCreatedAtMs(data.createdAt),
+    isPublic: data.isPublic,
   });
+
+  const isLegacyPublic = (exam: ExamSummary) => exam.isPublic !== false;
 
   const toSortedExamList = (snapshot: any): ExamSummary[] => {
     const nextExams: ExamSummary[] = [];
@@ -178,21 +182,39 @@ function StudentHome() {
     const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
     const examsQuery = isPrivileged ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
 
+    const loadWithLegacyFallback = async () => {
+      const snap = await getDocs(examsQuery);
+      let nextExams = toSortedExamList(snap);
+
+      if (!isPrivileged && nextExams.length === 0) {
+        const legacySnap = await getDocs(query(examsRef));
+        const legacyExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
+        nextExams = legacyExams;
+      }
+
+      setExams(nextExams);
+      setLoading(false);
+      setError(null);
+    };
+
     const unsubscribe = onSnapshot(
       examsQuery,
-      (examSnap) => {
-        setExams(toSortedExamList(examSnap));
+      async (examSnap) => {
+        let nextExams = toSortedExamList(examSnap);
+
+        if (!isPrivileged && nextExams.length === 0) {
+          const legacySnap = await getDocs(query(examsRef));
+          const legacyExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
+          nextExams = legacyExams;
+        }
+
+        setExams(nextExams);
         setLoading(false);
         setError(null);
       },
       (err) => {
         console.error('Error subscribing to exams:', err);
-        getDocs(examsQuery)
-          .then((examSnap) => {
-            setExams(toSortedExamList(examSnap));
-            setLoading(false);
-            setError(null);
-          })
+        loadWithLegacyFallback()
           .catch((fallbackErr) => {
             const message = err instanceof Error ? err.message : String(err);
             const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
