@@ -146,9 +146,9 @@ export function StudentDashboard() {
             <StatCard title="Thời gian học" value={timeString} icon={<Clock className="w-6 h-6 text-emerald-600"/>} />
          </div>
 
-         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">Biểu đồ điểm số 7 ngày qua</h3>
-            <div className="h-64 absolute bottom-0 left-0 right-0 w-full">
+            <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                      <defs>
