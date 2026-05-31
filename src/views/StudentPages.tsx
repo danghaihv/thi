@@ -257,7 +257,8 @@ export function StudentHistory() {
                <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
-                        <th className="font-semibold p-5 pl-6">Mã Đề thi</th>
+                        <th className="font-semibold p-5 pl-6">Tên đề thi</th>
+                        <th className="font-semibold p-5">Mã Đề thi</th>
                         <th className="font-semibold p-5">Ngày nộp</th>
                         <th className="font-semibold p-5">Câu đúng</th>
                         <th className="font-semibold p-5">Điểm hệ 10</th>
@@ -268,6 +269,9 @@ export function StudentHistory() {
                      {mockHistory.map(h => (
                        <tr key={h.id} className="border-b border-slate-100 last:border-none hover:bg-slate-50/50 transition-colors">
                           <td className="p-5 pl-6 font-semibold text-slate-800">
+                            {h.examTitle || h.examName || h.title || h.examId}
+                          </td>
+                          <td className="p-5 font-semibold text-slate-700">
                             {h.examId}
                           </td>
                           <td className="p-5 text-slate-600 text-sm font-medium">
@@ -301,7 +305,7 @@ export function StudentHistory() {
                        </tr>
                      ))}
                      {mockHistory.length === 0 && (
-                        <tr><td colSpan={5} className="p-5 text-center text-slate-500">Chưa có bài thi nào</td></tr>
+                        <tr><td colSpan={6} className="p-5 text-center text-slate-500">Chưa có bài thi nào</td></tr>
                      )}
                   </tbody>
                </table>
