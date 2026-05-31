@@ -107,36 +107,30 @@ export default function ExamWorkspace() {
   }, [id, navigate]);
 
   useEffect(() => {
-    const checkSubLimit = async () => {
+    let unsubAuth: (() => void) | null = null;
+
+    const checkSubLimit = async (uid: string) => {
       if (!id) return;
       setCheckingLimit(true);
       setCheckLimitError(null);
-      
-      try {
-        if (!auth.currentUser) {
-          setCheckingLimit(false);
-          return;
-        }
 
-        const uDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      try {
+        const uDoc = await getDoc(doc(db, 'users', uid));
         if (uDoc.exists()) {
           const uData = uDoc.data();
           setCurrentUser(uData);
 
-          // Admin or teacher can do unlimited exams
           if (uData.role === 'admin' || uData.role === 'teacher') {
             setCheckingLimit(false);
             return;
           }
 
-          // VIP can do unlimited exams
           const hasVip = uData.vipExpiry && new Date(uData.vipExpiry).getTime() > Date.now();
           if (hasVip) {
             setCheckingLimit(false);
             return;
           }
 
-          // Free user -> count monthly exam submissions
           const startOfMonth = new Date();
           startOfMonth.setDate(1);
           startOfMonth.setHours(0, 0, 0, 0);
@@ -144,7 +138,7 @@ export default function ExamWorkspace() {
 
           const subQ = query(
             collection(db, 'submissions'),
-            where('studentId', '==', auth.currentUser.uid),
+            where('studentId', '==', uid),
             where('submittedAt', '>=', startOfMonthISO)
           );
           const subSnap = await getDocs(subQ);
@@ -159,7 +153,21 @@ export default function ExamWorkspace() {
       }
     };
 
-    checkSubLimit();
+    if (auth.currentUser?.uid) {
+      checkSubLimit(auth.currentUser.uid);
+    } else {
+      unsubAuth = auth.onAuthStateChanged((user) => {
+        if (user?.uid) {
+          checkSubLimit(user.uid);
+        } else {
+          setCheckingLimit(false);
+        }
+      });
+    }
+
+    return () => {
+      if (unsubAuth) unsubAuth();
+    };
   }, [id]);
 
   useEffect(() => {
