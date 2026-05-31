@@ -1,5 +1,45 @@
+import crypto from "crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyVipUpgrade, findPendingPaymentByMemo, hasProcessedTx } from "../_shared";
+
+function stableStringify(value: any): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function verifyHmac(req: VercelRequest, secret: string): boolean {
+  const signature = String(req.headers["x-sepay-signature"] || "").trim();
+  const timestamp = String(req.headers["x-sepay-timestamp"] || "").trim();
+  if (!signature || !timestamp) return false;
+
+  const rawBody = typeof req.body === "object" ? stableStringify(req.body) : String(req.body || "");
+  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  return safeEqual(signature, expected);
+}
+
+function verifyLegacyToken(req: VercelRequest, secret: string): boolean {
+  const authHeader = String(req.headers.authorization || "");
+  const requestToken = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : String(req.headers["x-sepay-token"] || "").trim();
+  return requestToken === secret;
+}
+
+function isFreshTimestamp(req: VercelRequest): boolean {
+  const ts = Number(req.headers["x-sepay-timestamp"] || 0);
+  if (!ts) return true;
+  const now = Math.floor(Date.now() / 1000);
+  return Math.abs(now - ts) <= 300;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
@@ -10,23 +50,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }
 
-  const token = process.env.SEPAY_WEBHOOK_TOKEN;
-  if (!token) {
+  const secret = process.env.SEPAY_WEBHOOK_TOKEN;
+  if (!secret) {
     return res.status(500).json({ success: false, message: "Server chưa cấu hình SEPAY_WEBHOOK_TOKEN." });
   }
 
-  const authHeader = String(req.headers.authorization || "");
-  const requestToken = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : String(req.headers["x-sepay-token"] || "").trim();
+  if (!isFreshTimestamp(req)) {
+    return res.status(401).json({ success: false, message: "Webhook timestamp quá hạn." });
+  }
 
-  if (requestToken !== token) {
-    return res.status(401).json({ success: false, message: "Unauthorized webhook token." });
+  const authorized = verifyHmac(req, secret) || verifyLegacyToken(req, secret);
+  if (!authorized) {
+    return res.status(401).json({ success: false, message: "Unauthorized webhook signature/token." });
   }
 
   try {
     const payload: any = req.body || {};
-    const memo = String(payload.content || payload.transaction_content || payload.description || "").trim();
+    const memo = String(payload.content || payload.transaction_content || payload.description || "").trim().toUpperCase();
     const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
     const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || "").trim();
 
@@ -44,13 +84,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
     }
 
+    if (!pendingPayment.userId || !pendingPayment.memo || !pendingPayment.amount || !pendingPayment.days) {
+      return res.status(404).json({ success: false, message: "Dữ liệu hóa đơn không hợp lệ." });
+    }
+
     if (Number(amount) < Number(pendingPayment.amount || 0)) {
       return res.status(400).json({ success: false, message: "Số tiền nhận được nhỏ hơn hóa đơn yêu cầu." });
     }
 
     const upgraded = await applyVipUpgrade({
       userId: String(pendingPayment.userId),
-      memo: String(pendingPayment.memo),
+      memo: String(pendingPayment.memo).toUpperCase(),
       amount: Number(pendingPayment.amount),
       days: Number(pendingPayment.days),
       sepayTxId
