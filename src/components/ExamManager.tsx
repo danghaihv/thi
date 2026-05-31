@@ -3,7 +3,7 @@ import { Question } from '../types';
 import { parseDocx, parseTextToQuestions, generateId } from '../utils/parser';
 import { Upload, Plus, Trash2, CheckCircle2, ChevronLeft, Save, Settings, Edit3, ShieldAlert, Table, Filter } from 'lucide-react';
 import { LatexRenderer } from './LatexRenderer';
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 
 export type ExamCategory = 'Đề ôn tập bài học/chương' | 'Đề ôn tập GHK1' | 'Đề ôn tập HK1' | 'Đề ôn tập GHK2' | 'Đề ôn tập HK2' | 'Đề khảo sát' | 'Đề HSG';
@@ -71,13 +71,25 @@ export function ExamManager() {
   const fetchExams = async () => {
     if (!auth.currentUser) return;
     try {
-      const userStr = localStorage.getItem('hmath_user');
-      const currentUser = userStr ? JSON.parse(userStr) : null;
-      const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
+      const uid = auth.currentUser.uid;
+      let role = '';
 
+      try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as { role?: string };
+          role = userData.role || '';
+        }
+      } catch {
+        const userStr = localStorage.getItem('hmath_user');
+        const currentUser = userStr ? JSON.parse(userStr) : null;
+        role = currentUser?.role || '';
+      }
+
+      const isPrivileged = role === 'admin' || role === 'teacher';
       const q = isPrivileged
         ? query(collection(db, 'exams'))
-        : query(collection(db, 'exams'), where('ownerId', '==', auth.currentUser.uid));
+        : query(collection(db, 'exams'), where('ownerId', '==', uid));
 
       const querySnapshot = await getDocs(q);
       const data: Exam[] = [];
