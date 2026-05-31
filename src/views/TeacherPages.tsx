@@ -20,6 +20,10 @@ export function TeacherUsers() {
    const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
    const [vipDays, setVipDays] = useState(30);
    const [isGranting, setIsGranting] = useState(false);
+   const [grantMessage, setGrantMessage] = useState('');
+   const [grantError, setGrantError] = useState('');
+   const [lastGrantedUserId, setLastGrantedUserId] = useState('');
+   const [lastGrantedExpiry, setLastGrantedExpiry] = useState('');
 
    useEffect(() => {
      const q = query(collection(db, 'users'), where('role', '==', 'student'));
@@ -48,6 +52,8 @@ export function TeacherUsers() {
    const grantVip = async () => {
      if (!selectedStudent) return;
      setIsGranting(true);
+     setGrantError('');
+     setGrantMessage('');
      try {
        const now = Date.now();
        const currentExpiryMs = selectedStudent.vipExpiry ? new Date(selectedStudent.vipExpiry).getTime() : 0;
@@ -60,10 +66,15 @@ export function TeacherUsers() {
          vipGrantedAt: new Date().toISOString(),
        });
 
+       setLastGrantedUserId(selectedStudent.id);
+       setLastGrantedExpiry(nextExpiry);
+       setGrantMessage(`Đã cấp VIP ${vipDays} ngày thành công.`);
        setSelectedStudent(null);
        setVipDays(30);
-     } catch (err) {
-       handleFirestoreError(err, OperationType.UPDATE, `users/${selectedStudent.id}`);
+     } catch (err: any) {
+       const msg = err?.message || String(err);
+       setGrantError(`Cấp VIP thất bại: ${msg}`);
+       console.error('Grant VIP failed:', err);
      } finally {
        setIsGranting(false);
      }
@@ -85,7 +96,7 @@ export function TeacherUsers() {
          </div>
        </div>
 
-       <div className="mb-5">
+       <div className="mb-5 space-y-3">
          <input
            type="text"
            value={searchQuery}
@@ -93,6 +104,19 @@ export function TeacherUsers() {
            placeholder="Tìm theo tên / email / zalo..."
            className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500"
          />
+         {grantMessage && (
+           <div className="text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl">
+             {grantMessage}
+             {lastGrantedExpiry && (
+               <span className="ml-2 text-emerald-600">(Hạn mới: {new Date(lastGrantedExpiry).toLocaleString('vi-VN')})</span>
+             )}
+           </div>
+         )}
+         {grantError && (
+           <div className="text-sm font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-4 py-2 rounded-xl">
+             {grantError}
+           </div>
+         )}
        </div>
 
        <div className="overflow-x-auto">
@@ -109,8 +133,9 @@ export function TeacherUsers() {
            <tbody>
              {filteredStudents.map(s => {
                const isVip = s.vipExpiry && new Date(s.vipExpiry).getTime() > Date.now();
+               const isJustGranted = lastGrantedUserId === s.id;
                return (
-                 <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                 <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isJustGranted ? 'bg-emerald-50/60' : ''}`}>
                    <td className="py-4 px-4 font-bold text-slate-700">{s.fullName || s.name || 'Chưa cập nhật'}</td>
                    <td className="py-4 px-4 text-slate-600">{s.email}</td>
                    <td className="py-4 px-4 text-slate-600 font-mono">{s.zalo || 'Chưa có'}</td>
