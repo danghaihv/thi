@@ -80,6 +80,25 @@ export function TeacherUsers() {
      }
    };
 
+   const revokeVip = async (student: any) => {
+     setGrantError('');
+     setGrantMessage('');
+     try {
+       await updateDoc(doc(db, 'users', student.id), {
+         vipType: '',
+         vipExpiry: '',
+         vipGrantedAt: new Date().toISOString(),
+       });
+       setLastGrantedUserId(student.id);
+       setLastGrantedExpiry('');
+       setGrantMessage(`Đã hạ VIP cho ${student.fullName || student.name || student.email}.`);
+     } catch (err: any) {
+       const msg = err?.message || String(err);
+       setGrantError(`Hạ VIP thất bại: ${msg}`);
+       console.error('Revoke VIP failed:', err);
+     }
+   };
+
    if (isLoading) {
       return <div className="py-20 text-center animate-pulse text-slate-500">Đang tải danh sách học sinh...</div>;
    }
@@ -91,8 +110,8 @@ export function TeacherUsers() {
            <Users className="w-6 h-6"/>
          </div>
          <div>
-           <h2 className="text-2xl font-bold text-slate-800">Học sinh & Lớp học</h2>
-           <p className="text-slate-500 text-sm">Quản lý danh sách học sinh trên hệ thống</p>
+           <h2 className="text-2xl font-bold text-slate-800">Danh sách học sinh</h2>
+           <p className="text-slate-500 text-sm">Quản lý trạng thái tài khoản học sinh trên hệ thống</p>
          </div>
        </div>
 
@@ -145,12 +164,22 @@ export function TeacherUsers() {
                      </span>
                    </td>
                    <td className="py-4 px-4 text-right">
-                     <button
-                       onClick={() => setSelectedStudent(s)}
-                       className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
-                     >
-                       Cấp VIP
-                     </button>
+                     <div className="flex justify-end gap-2">
+                       <button
+                         onClick={() => setSelectedStudent(s)}
+                         className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                       >
+                         Cấp VIP
+                       </button>
+                       {isVip && (
+                         <button
+                           onClick={() => revokeVip(s)}
+                           className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+                         >
+                           Hạ VIP
+                         </button>
+                       )}
+                     </div>
                    </td>
                  </tr>
                );
