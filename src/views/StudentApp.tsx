@@ -173,6 +173,9 @@ function StudentHome() {
   };
 
   useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let isMounted = true;
+
     setLoading(true);
     setError(null);
 
@@ -182,49 +185,56 @@ function StudentHome() {
     const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
     const examsQuery = isPrivileged ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
 
-    const loadWithLegacyFallback = async () => {
-      const snap = await getDocs(examsQuery);
-      let nextExams = toSortedExamList(snap);
-
+    const resolveExamList = async (baseSnap: any) => {
+      let nextExams = toSortedExamList(baseSnap);
       if (!isPrivileged && nextExams.length === 0) {
         const legacySnap = await getDocs(query(examsRef));
-        const legacyExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
-        nextExams = legacyExams;
+        nextExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
       }
-
-      setExams(nextExams);
-      setLoading(false);
-      setError(null);
+      return nextExams;
     };
 
-    const unsubscribe = onSnapshot(
-      examsQuery,
-      async (examSnap) => {
-        let nextExams = toSortedExamList(examSnap);
-
-        if (!isPrivileged && nextExams.length === 0) {
-          const legacySnap = await getDocs(query(examsRef));
-          const legacyExams = toSortedExamList(legacySnap).filter(isLegacyPublic);
-          nextExams = legacyExams;
-        }
-
-        setExams(nextExams);
+    const start = async () => {
+      try {
+        const initialSnap = await getDocs(examsQuery);
+        const initialExams = await resolveExamList(initialSnap);
+        if (!isMounted) return;
+        setExams(initialExams);
         setLoading(false);
         setError(null);
-      },
-      (err) => {
-        console.error('Error subscribing to exams:', err);
-        loadWithLegacyFallback()
-          .catch((fallbackErr) => {
-            const message = err instanceof Error ? err.message : String(err);
-            const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            setError(`Lỗi tải đề thi: ${message || fallbackMessage}`);
-            setLoading(false);
-          });
+      } catch (err: any) {
+        if (!isMounted) return;
+        setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
+        setLoading(false);
       }
-    );
 
-    return () => unsubscribe();
+      unsub = onSnapshot(
+        examsQuery,
+        async (examSnap) => {
+          try {
+            const nextExams = await resolveExamList(examSnap);
+            if (!isMounted) return;
+            setExams(nextExams);
+            setError(null);
+          } catch (err: any) {
+            if (!isMounted) return;
+            setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
+          }
+        },
+        (err) => {
+          if (!isMounted) return;
+          console.error('Error subscribing to exams:', err);
+          setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
+        }
+      );
+    };
+
+    start();
+
+    return () => {
+      isMounted = false;
+      if (unsub) unsub();
+    };
   }, []);
 
   const filtered = exams.filter(e => {
