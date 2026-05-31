@@ -17,6 +17,7 @@ interface Exam {
   questions: Question[];
   createdAt: string;
   ownerId: string;
+  isPublic?: boolean;
   difficulty?: 'Cơ bản' | 'Trung bình' | 'Nâng cao';
   category?: ExamCategory;
   config: {
@@ -70,10 +71,14 @@ export function ExamManager() {
   const fetchExams = async () => {
     if (!auth.currentUser) return;
     try {
-      let q = query(collection(db, 'exams'));
-      if (auth.currentUser.email !== 'pdanghai.mmo@gmail.com') {
-        q = query(collection(db, 'exams'), where('ownerId', '==', auth.currentUser.uid));
-      }
+      const userStr = localStorage.getItem('hmath_user');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+      const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
+
+      const q = isPrivileged
+        ? query(collection(db, 'exams'))
+        : query(collection(db, 'exams'), where('ownerId', '==', auth.currentUser.uid));
+
       const querySnapshot = await getDocs(q);
       const data: Exam[] = [];
       querySnapshot.forEach((doc) => {
@@ -356,6 +361,15 @@ export function ExamManager() {
                          </span>
                          <span className={`font-bold text-[11px] px-2.5 py-1 rounded-full border leading-none shrink-0 ${getCategoryBadgeStyle(exam.category)}`}>
                            {exam.category || 'Đề ôn tập bài học/chương'}
+                         </span>
+                         <span className={`font-bold text-[11px] px-2.5 py-1 rounded-full border leading-none shrink-0 ${
+                           exam.isPublic === true
+                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                             : exam.isPublic === false
+                             ? 'bg-slate-100 text-slate-700 border-slate-200'
+                             : 'bg-amber-50 text-amber-700 border-amber-100'
+                         }`}>
+                           {exam.isPublic === true ? 'Công khai' : exam.isPublic === false ? 'Riêng tư' : 'Chưa thiết lập'}
                          </span>
                       </div>
                     <div className="flex gap-2 opacity-150 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
