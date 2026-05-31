@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ExamManager } from '../components/ExamManager';
 import { Users, Shield } from 'lucide-react';
-import { collection, query, where, getDocs, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 
@@ -16,6 +16,10 @@ export function TeacherExams() {
 export function TeacherUsers() {
    const [students, setStudents] = useState<any[]>([]);
    const [isLoading, setIsLoading] = useState(true);
+   const [searchQuery, setSearchQuery] = useState('');
+   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+   const [vipDays, setVipDays] = useState(30);
+   const [isGranting, setIsGranting] = useState(false);
 
    useEffect(() => {
      const q = query(collection(db, 'users'), where('role', '==', 'student'));
@@ -27,9 +31,43 @@ export function TeacherUsers() {
        console.error("Error fetching students:", err);
        setIsLoading(false);
      });
-     
+
      return () => unsubscribe();
    }, []);
+
+   const filteredStudents = students.filter((s) => {
+     const q = searchQuery.trim().toLowerCase();
+     if (!q) return true;
+     return (
+       String(s.fullName || s.name || '').toLowerCase().includes(q) ||
+       String(s.email || '').toLowerCase().includes(q) ||
+       String(s.zalo || '').toLowerCase().includes(q)
+     );
+   });
+
+   const grantVip = async () => {
+     if (!selectedStudent) return;
+     setIsGranting(true);
+     try {
+       const now = Date.now();
+       const currentExpiryMs = selectedStudent.vipExpiry ? new Date(selectedStudent.vipExpiry).getTime() : 0;
+       const base = currentExpiryMs > now ? currentExpiryMs : now;
+       const nextExpiry = new Date(base + vipDays * 24 * 60 * 60 * 1000).toISOString();
+
+       await updateDoc(doc(db, 'users', selectedStudent.id), {
+         vipType: `${vipDays} ngày`,
+         vipExpiry: nextExpiry,
+         vipGrantedAt: new Date().toISOString(),
+       });
+
+       setSelectedStudent(null);
+       setVipDays(30);
+     } catch (err) {
+       handleFirestoreError(err, OperationType.UPDATE, `users/${selectedStudent.id}`);
+     } finally {
+       setIsGranting(false);
+     }
+   };
 
    if (isLoading) {
       return <div className="py-20 text-center animate-pulse text-slate-500">Đang tải danh sách học sinh...</div>;
@@ -37,7 +75,7 @@ export function TeacherUsers() {
 
    return (
      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in duration-500">
-       <div className="flex items-center gap-4 mb-8 border-b border-slate-100 pb-6">
+       <div className="flex items-center gap-4 mb-6 border-b border-slate-100 pb-6">
          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
            <Users className="w-6 h-6"/>
          </div>
@@ -47,6 +85,16 @@ export function TeacherUsers() {
          </div>
        </div>
 
+       <div className="mb-5">
+         <input
+           type="text"
+           value={searchQuery}
+           onChange={(e) => setSearchQuery(e.target.value)}
+           placeholder="Tìm theo tên / email / zalo..."
+           className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500"
+         />
+       </div>
+
        <div className="overflow-x-auto">
          <table className="w-full text-left">
            <thead>
@@ -54,24 +102,79 @@ export function TeacherUsers() {
                <th className="pb-3 font-semibold px-4">Họ và tên</th>
                <th className="pb-3 font-semibold px-4">Email</th>
                <th className="pb-3 font-semibold px-4">Zalo</th>
+               <th className="pb-3 font-semibold px-4">VIP</th>
+               <th className="pb-3 font-semibold px-4 text-right">Thao tác</th>
              </tr>
            </thead>
            <tbody>
-             {students.map(s => (
-               <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                 <td className="py-4 px-4 font-bold text-slate-700">{s.fullName || s.name || 'Chưa cập nhật'}</td>
-                 <td className="py-4 px-4 text-slate-600">{s.email}</td>
-                 <td className="py-4 px-4 text-slate-600 font-mono">{s.zalo || 'Chưa có'}</td>
-               </tr>
-             ))}
-             {students.length === 0 && (
+             {filteredStudents.map(s => {
+               const isVip = s.vipExpiry && new Date(s.vipExpiry).getTime() > Date.now();
+               return (
+                 <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                   <td className="py-4 px-4 font-bold text-slate-700">{s.fullName || s.name || 'Chưa cập nhật'}</td>
+                   <td className="py-4 px-4 text-slate-600">{s.email}</td>
+                   <td className="py-4 px-4 text-slate-600 font-mono">{s.zalo || 'Chưa có'}</td>
+                   <td className="py-4 px-4">
+                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${isVip ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                       {isVip ? `VIP đến ${new Date(s.vipExpiry).toLocaleDateString('vi-VN')}` : 'Miễn phí'}
+                     </span>
+                   </td>
+                   <td className="py-4 px-4 text-right">
+                     <button
+                       onClick={() => setSelectedStudent(s)}
+                       className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                     >
+                       Cấp VIP
+                     </button>
+                   </td>
+                 </tr>
+               );
+             })}
+             {filteredStudents.length === 0 && (
                <tr>
-                 <td colSpan={3} className="py-8 text-center text-slate-500">Chưa có học sinh nào trên hệ thống</td>
+                 <td colSpan={5} className="py-8 text-center text-slate-500">Không có học sinh phù hợp</td>
                </tr>
              )}
            </tbody>
          </table>
        </div>
+
+       {selectedStudent && (
+         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+           <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-100 shadow-2xl">
+             <h3 className="text-lg font-bold text-slate-800 mb-2">Cấp VIP cho {selectedStudent.fullName || selectedStudent.name || selectedStudent.email}</h3>
+             <p className="text-sm text-slate-500 mb-4">Chọn số ngày VIP muốn cộng thêm.</p>
+
+             <div className="grid grid-cols-4 gap-2 mb-5">
+               {[30, 180, 365, 7].map((d) => (
+                 <button
+                   key={d}
+                   onClick={() => setVipDays(d)}
+                   className={`px-2 py-2 rounded-lg text-xs font-bold border ${vipDays === d ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                 >
+                   {d} ngày
+                 </button>
+               ))}
+             </div>
+
+             <div className="flex justify-end gap-3">
+               <button
+                 onClick={() => setSelectedStudent(null)}
+                 className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 font-semibold"
+               >
+                 Hủy
+               </button>
+               <button
+                 onClick={grantVip}
+                 disabled={isGranting}
+                 className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50"
+               >
+                 {isGranting ? 'Đang cấp...' : 'Xác nhận cấp VIP'}
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
      </div>
    );
 }

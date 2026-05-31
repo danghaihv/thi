@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, Trophy, Clock, Target, CalendarDays, History as HistoryIcon, FileText, Eye, X, User, Phone, Mail, Save, Sparkles, ShieldCheck, Check, Copy, RefreshCw, Star, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { collection, query, where, getDocs, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { LatexRenderer } from '../components/LatexRenderer';
 
@@ -187,6 +187,7 @@ export function StudentHistory() {
    const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
    const [loadedExam, setLoadedExam] = useState<any | null>(null);
    const [isLoadingExam, setIsLoadingExam] = useState<boolean>(false);
+   const [currentUser, setCurrentUser] = useState<any>(null);
 
    useEffect(() => {
       if (!selectedSubmission) {
@@ -216,6 +217,11 @@ export function StudentHistory() {
      const fetchHistory = async () => {
        if (!auth.currentUser) return;
        try {
+         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+         if (userDoc.exists()) {
+           setCurrentUser(userDoc.data());
+         }
+
          const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
          const snapshot = await getDocs(q);
          const list: any[] = [];
@@ -229,6 +235,10 @@ export function StudentHistory() {
      };
      fetchHistory();
    }, []);
+
+   const isVipUser = currentUser?.vipExpiry && new Date(currentUser.vipExpiry).getTime() > Date.now();
+   const isStaff = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
+   const canViewDetail = Boolean(isVipUser || isStaff);
 
    const getOptionLabel = (idx: number) => {
       if (idx < 0) return 'Chưa chọn';
@@ -273,11 +283,18 @@ export function StudentHistory() {
                           </td>
                           <td className="p-5 pr-6 text-right">
                              {h.showResultAfter !== false && h.results && (
-                               <button 
-                                 onClick={() => setSelectedSubmission(h)}
+                               <button
+                                 onClick={() => {
+                                   if (canViewDetail) {
+                                     setSelectedSubmission(h);
+                                   } else {
+                                     window.alert('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP.');
+                                     window.location.hash = '#/profile';
+                                   }
+                                 }}
                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg text-sm font-medium transition-colors"
                                >
-                                 <Eye className="w-4 h-4" /> Xem chi tiết
+                                 <Eye className="w-4 h-4" /> {canViewDetail ? 'Xem chi tiết' : 'Nâng VIP để xem'}
                                </button>
                              )}
                           </td>
@@ -484,7 +501,44 @@ export function StudentProfile() {
    };
 
    useEffect(() => {
+      let unsubSubmissions: (() => void) | null = null;
+      let unsubAuth: (() => void) | null = null;
+
+      const setupRealtimeCount = async (uid: string) => {
+         const startOfMonth = new Date();
+         startOfMonth.setDate(1);
+         startOfMonth.setHours(0, 0, 0, 0);
+         const startOfMonthISO = startOfMonth.toISOString();
+
+         const subQ = query(
+            collection(db, 'submissions'),
+            where('studentId', '==', uid),
+            where('submittedAt', '>=', startOfMonthISO)
+         );
+
+         unsubSubmissions = onSnapshot(subQ, (subSnap) => {
+            setMonthlyExamCount(subSnap.size);
+         }, (err) => {
+            console.error('Realtime submissions counter error:', err);
+         });
+      };
+
       fetchUserAndStats();
+
+      if (auth.currentUser) {
+         setupRealtimeCount(auth.currentUser.uid);
+      } else {
+         unsubAuth = auth.onAuthStateChanged((user) => {
+            if (user) {
+               setupRealtimeCount(user.uid);
+            }
+         });
+      }
+
+      return () => {
+         if (unsubSubmissions) unsubSubmissions();
+         if (unsubAuth) unsubAuth();
+      };
    }, []);
 
    const handleSave = async () => {
