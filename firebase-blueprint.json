@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "zalo": { "type": "string" },
+        "vipExpiry": { "type": "string" },
+        "vipType": { "type": "string" }
+      },
+      "required": ["email", "name", "role"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Exam definitions",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "grade": { "type": "number" },
+        "timeLimit": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "config": {
+          "type": "object",
+          "properties": {
+            "shuffleQuestions": { "type": "boolean" },
+            "shuffleOptions": { "type": "boolean" },
+            "showResultAfter": { "type": "boolean" },
+            "antiCheat": { "type": "boolean" }
+          }
+        },
+        "questions": {
+          "type": "array",
+          "description": "Bounded list of questions, max 200"
+        },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["title", "grade", "timeLimit", "totalScore", "config", "questions", "createdAt", "ownerId"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Student exam submission",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string" },
+        "examOwnerId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "score": { "type": "number" },
+        "total": { "type": "number" },
+        "examTotalScore": { "type": "number" },
+        "showResultAfter": { "type": "boolean" },
+        "results": {
+          "type": "array"
+        },
+        "submittedAt": { "type": "string" },
+        "studentId": { "type": "string" }
+      },
+      "required": ["examId", "examOwnerId", "studentName", "score", "total", "examTotalScore", "showResultAfter", "results", "submittedAt", "studentId"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "allowPublicRegistration": { "type": "boolean" },
+        "defaultExamTimeLimit": { "type": "number" },
+        "antiCheatStrictness": { "type": "string", "enum": ["low", "medium", "high"] },
+        "vip1MonthPrice": { "type": "number" },
+        "vip6MonthPrice": { "type": "number" },
+        "vip1YearPrice": { "type": "number" },
+        "sepayApiKey": { "type": "string" },
+        "sepayBankId": { "type": "string" },
+        "sepayAccountNo": { "type": "string" },
+        "sepayAccountName": { "type": "string" }
+      },
+      "required": ["allowPublicRegistration", "defaultExamTimeLimit", "antiCheatStrictness"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "User subscription payment record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "amount": { "type": "number" },
+        "days": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "memo": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "amount", "days", "status", "memo", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stored user profiles. Controlled by admins or users."
+    },
+    "exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exams created by teachers"
+    },
+    "submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Submissions by students"
+    },
+    "settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Global application configuration settings"
+    },
+    "payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Billing payment records for VIP membership upgrades"
+    }
+  }
+}

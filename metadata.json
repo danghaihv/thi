@@ -1,0 +1,6 @@
+{
+  "name": "HMath.pro.vn - Luyện thi trực tuyến",
+  "description": "Nền tảng thi trắc nghiệm toán học với khả năng nhập đề từ file Word nhanh chóng.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

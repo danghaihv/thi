@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    function existing() { return resource.data; }
+    function incoming() { return request.resource.data; }
+    function isAuth() { return request.auth != null; } 
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); }
+    
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 200
+          && data.name is string && data.name.size() <= 100
+          && data.role in ['admin', 'teacher', 'student']
+          && data.keys().hasAll(['email', 'name', 'role'])
+          && (!data.keys().hasAny(['zalo']) || data.zalo is string)
+          && (!data.keys().hasAny(['vipExpiry']) || data.vipExpiry is string)
+          && (!data.keys().hasAny(['vipType']) || data.vipType is string);
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.auth.uid == userId 
+                 && isValidUser(incoming())
+                 && (incoming().role == 'student' || request.auth.token.email == 'pdanghai.mmo@gmail.com');
+      allow update: if isAuth() && request.auth.uid == userId 
+                 && isValidUser(incoming());
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'teacher']);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /exams/{examId} {
+      allow read: if true; 
+      allow write: if isAuth() && (request.auth.token.email == 'pdanghai.mmo@gmail.com' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'teacher']);
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if isAuth() && (existing().studentId == request.auth.uid || existing().examOwnerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'teacher']); 
+      allow create: if isAuth() && isValidId(submissionId)
+                    && exists(/databases/$(database)/documents/exams/$(request.resource.data.examId));
+      allow update, delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAuth() && (request.auth.token.email == 'pdanghai.mmo@gmail.com' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'teacher']);
+    }
+  }
+}
