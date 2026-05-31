@@ -130,57 +130,120 @@ function StudentHome() {
 
   useEffect(() => {
     let unsubExams: (() => void) | null = null;
+    let timeoutId: NodeJS.Timeout;
+    
     setLoading(true);
     setError(null);
 
-    const setupListeners = () => {
-      // 1. Subscribe to exams (public read permission is open)
-      unsubExams = onSnapshot(collection(db, 'exams'), (examSnap) => {
-        const publicExams: any[] = [];
-        examSnap.forEach(doc => {
-          const data = doc.data();
+    const setupListeners = async () => {
+      try {
+        // Wait for auth to be ready
+        if (!auth.currentUser) {
+          console.log('Waiting for auth...');
+          // Set a 5 second timeout - if auth doesn't load, continue anyway
+          timeoutId = setTimeout(() => {
+            if (!auth.currentUser) {
+              console.warn('Auth timeout, loading exams anyway');
+              loadExams();
+            }
+          }, 5000);
           
-          // Deterministic fake counts based on ID so UI looks populated without DB leak
-          let hash = 0;
-          for (let i = 0; i < doc.id.length; i++) {
-            hash = doc.id.charCodeAt(i) + ((hash << 5) - hash);
-          }
-          const fakeAttempts = Math.abs(hash % 900) + 120;
-
-          publicExams.push({
-            id: doc.id,
-            title: data.title,
-            grade: data.grade,
-            timeLimit: data.timeLimit,
-            questionCount: data.questions?.length || 0,
-            totalScore: data.totalScore || 10,
-            submissionCount: fakeAttempts,
-            difficulty: data.difficulty || 'Trung bình',
-            category: data.category || 'Đề ôn tập bài học/chương',
-            createdAt: data.createdAt || ''
-          });
-        });
+          return;
+        }
         
-        // Sort from newest to oldest (by createdAt descending)
-        publicExams.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-        
-        setExams(publicExams);
+        loadExams();
+      } catch (err: any) {
+        console.error('Setup listeners error:', err);
+        setError(err.message || 'Lỗi kết nối cơ sở dữ liệu');
         setLoading(false);
-      }, (err) => {
-        console.error("Error subscribing to exams:", err);
-        setError(err.message || String(err));
-        setLoading(false);
-      });
+      }
     };
 
-    setupListeners();
+    const loadExams = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      console.log('Loading exams...');
+      
+      try {
+        // Subscribe to exams (public read permission is open)
+        unsubExams = onSnapshot(
+          collection(db, 'exams'),
+          (examSnap) => {
+            console.log('Exams snapshot received:', examSnap.size, 'documents');
+            
+            const publicExams: any[] = [];
+            examSnap.forEach(doc => {
+              const data = doc.data();
+              
+              // Deterministic fake counts based on ID so UI looks populated without DB leak
+              let hash = 0;
+              for (let i = 0; i < doc.id.length; i++) {
+                hash = doc.id.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              const fakeAttempts = Math.abs(hash % 900) + 120;
+
+              publicExams.push({
+                id: doc.id,
+                title: data.title,
+                grade: data.grade,
+                timeLimit: data.timeLimit,
+                questionCount: data.questions?.length || 0,
+                totalScore: data.totalScore || 10,
+                submissionCount: fakeAttempts,
+                difficulty: data.difficulty || 'Trung bình',
+                category: data.category || 'Đề ôn tập bài học/chương',
+                createdAt: data.createdAt || ''
+              });
+            });
+            
+            // Sort from newest to oldest (by createdAt descending)
+            publicExams.sort((a, b) => {
+              const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return dateB - dateA;
+            });
+            
+            console.log('Processed exams:', publicExams.length);
+            setExams(publicExams);
+            setLoading(false);
+            setError(null);
+          },
+          (err) => {
+            console.error("Error subscribing to exams:", err);
+            setError(`Lỗi tải đề thi: ${err.message || String(err)}`);
+            setLoading(false);
+          }
+        );
+      } catch (err: any) {
+        console.error('Load exams error:', err);
+        setError(err.message || 'Không thể tải danh sách đề thi');
+        setLoading(false);
+      }
+    };
+
+    // Check if already authenticated, otherwise wait for auth state
+    if (auth.currentUser) {
+      loadExams();
+    } else {
+      const unsub = auth.onAuthStateChanged((user) => {
+        console.log('Auth state changed:', user?.uid);
+        if (user) {
+          loadExams();
+        }
+      });
+      
+      setupListeners();
+      
+      return () => {
+        unsub();
+        if (unsubExams) unsubExams();
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }
 
     return () => {
       if (unsubExams) unsubExams();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
