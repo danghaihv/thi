@@ -173,10 +173,13 @@ function StudentHome() {
     setError(null);
 
     const examsRef = collection(db, 'exams');
-    const publicExamsQuery = query(examsRef, where('isPublic', '==', true));
+    const userStr = localStorage.getItem('hmath_user');
+    const currentUser = userStr ? JSON.parse(userStr) : null;
+    const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
+    const examsQuery = isPrivileged ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
 
     const unsubscribe = onSnapshot(
-      publicExamsQuery,
+      examsQuery,
       (examSnap) => {
         setExams(toSortedExamList(examSnap));
         setLoading(false);
@@ -184,7 +187,7 @@ function StudentHome() {
       },
       (err) => {
         console.error('Error subscribing to exams:', err);
-        getDocs(publicExamsQuery)
+        getDocs(examsQuery)
           .then((examSnap) => {
             setExams(toSortedExamList(examSnap));
             setLoading(false);
