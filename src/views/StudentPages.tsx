@@ -9,6 +9,7 @@ export function StudentDashboard() {
    const [mockHistory, setMockHistory] = useState<any[]>([]);
    const [isLoading, setIsLoading] = useState(true);
    const [error, setError] = useState<string | null>(null);
+   const [timeWindowDays, setTimeWindowDays] = useState<7 | 30>(7);
    
    useEffect(() => {
      // Wait for auth to be ready
@@ -82,10 +83,18 @@ export function StudentDashboard() {
 
    const chartData = getLast7DaysData();
 
-   const totalSeconds = mockHistory.reduce((acc, curr) => acc + (curr.timeSpent || 1800), 0);
+   const now = Date.now();
+   const windowStart = now - timeWindowDays * 24 * 60 * 60 * 1000;
+   const windowHistory = mockHistory.filter((item) => new Date(item.submittedAt).getTime() >= windowStart);
+
+   const totalSeconds = windowHistory.reduce((acc, curr) => acc + (curr.timeSpent || 1800), 0);
    const hours = Math.floor(totalSeconds / 3600);
    const minutes = Math.floor((totalSeconds % 3600) / 60);
-   const timeString = mockHistory.length === 0 ? '0 phút' : (hours > 0 ? `${hours}h ${minutes}p` : `${minutes} phút`);
+   const timeString = windowHistory.length === 0 ? '0 phút' : (hours > 0 ? `${hours}h ${minutes}p` : `${minutes} phút`);
+
+   const avgScoreInWindow = windowHistory.length > 0
+      ? (windowHistory.reduce((acc, curr) => acc + (curr.scoreEarned !== undefined ? curr.scoreEarned : ((curr.score / curr.total) * (curr.examTotalScore || 10))), 0) / windowHistory.length)
+      : 0;
 
    if (isLoading) {
      return (
@@ -109,59 +118,52 @@ export function StudentDashboard() {
 
    return (
       <div className="space-y-8 animate-in fade-in duration-500">
-         <div className="mb-2">
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">Tổng quan học tập</h2>
-            <p className="text-slate-500 mt-1">Theo dõi tiến trình và kết quả rèn luyện của bản thân.</p>
+         <div className="mb-2 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">Tổng quan học tập</h2>
+              <p className="text-slate-500 mt-1">Theo dõi tiến trình và kết quả rèn luyện của bản thân.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Khung thời gian:</span>
+              <button
+                onClick={() => setTimeWindowDays(7)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeWindowDays === 7 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                7 ngày
+              </button>
+              <button
+                onClick={() => setTimeWindowDays(30)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeWindowDays === 30 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                30 ngày
+              </button>
+            </div>
          </div>
 
          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <StatCard title="Đề đã làm" value={mockHistory.length.toString()} icon={<BookOpen className="w-6 h-6 text-indigo-600"/>} />
-            <StatCard title="Điểm trung bình" value={mockHistory.length > 0 ? (mockHistory.reduce((acc, curr) => acc + (curr.scoreEarned !== undefined ? curr.scoreEarned : ((curr.score / curr.total) * (curr.examTotalScore || 10))), 0) / mockHistory.length).toFixed(1) : "0"} icon={<Trophy className="w-6 h-6 text-amber-500"/>} />
+            <StatCard title="Đề đã làm" value={windowHistory.length.toString()} icon={<BookOpen className="w-6 h-6 text-indigo-600"/>} />
+            <StatCard title="Điểm trung bình" value={avgScoreInWindow > 0 ? avgScoreInWindow.toFixed(1) : "0"} icon={<Trophy className="w-6 h-6 text-amber-500"/>} />
             <StatCard title="Thời gian học" value={timeString} icon={<Clock className="w-6 h-6 text-emerald-600"/>} />
          </div>
 
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
-               <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">Biểu đồ điểm số 7 ngày qua</h3>
-               <div className="h-64 absolute bottom-0 left-0 right-0 w-full">
-                   <ResponsiveContainer width="100%" height="100%">
-                     <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorDiem" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} domain={[0, 10]} dx={-10} />
-                        <Tooltip contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', padding: '12px'}} />
-                        <Area type="monotone" dataKey="diem" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorDiem)" name="Điểm số" />
-                     </AreaChart>
-                   </ResponsiveContainer>
-               </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-               <h3 className="font-bold text-slate-800 mb-6">Hoạt động gần đây</h3>
-               <div className="space-y-4">
-                 {mockHistory.slice(0,4).map(h => (
-                    <div key={h.id} className="flex gap-4 group hover:bg-slate-50 p-2 -mx-2 rounded-xl transition-colors cursor-pointer">
-                       <div className="mt-1 w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                         <FileText className="w-5 h-5"/>
-                       </div>
-                       <div>
-                         <p className="text-sm font-semibold text-slate-800 line-clamp-2 group-hover:text-indigo-700 transition-colors">{h.examId} (Bài nộp)</p>
-                         <div className="flex gap-2 text-xs text-slate-500 mt-2 font-medium">
-                           <span className="flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5"/> {new Date(h.submittedAt).toLocaleDateString()}</span>
-                           <span>•</span>
-                           <span className="text-emerald-600">Điểm: {((h.scoreEarned !== undefined ? h.scoreEarned : ((h.score / h.total) * h.examTotalScore))).toFixed(1)}</span>
-                         </div>
-                       </div>
-                    </div>
-                 ))}
-                 {mockHistory.length === 0 && <div className="text-sm text-slate-500">Chưa có hoạt động.</div>}
-               </div>
+         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+            <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">Biểu đồ điểm số 7 ngày qua</h3>
+            <div className="h-64 absolute bottom-0 left-0 right-0 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                     <defs>
+                       <linearGradient id="colorDiem" x1="0" y1="0" x2="0" y2="1">
+                         <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                         <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                       </linearGradient>
+                     </defs>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} domain={[0, 10]} dx={-10} />
+                     <Tooltip contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', padding: '12px'}} />
+                     <Area type="monotone" dataKey="diem" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorDiem)" name="Điểm số" />
+                  </AreaChart>
+                </ResponsiveContainer>
             </div>
          </div>
       </div>
