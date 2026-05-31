@@ -482,15 +482,25 @@ export function StudentProfile() {
          const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
          if (userDoc.exists()) {
             const userData = userDoc.data();
-            setUser(userData);
-            setZalo(userData.zalo || '');
-            
-            // Sync to local storage for consistency
             const saved = localStorage.getItem('hmath_user');
-            if (saved) {
-               const parsed = JSON.parse(saved);
-               localStorage.setItem('hmath_user', JSON.stringify({ ...parsed, ...userData }));
-            }
+            const parsed = saved ? JSON.parse(saved) : {};
+            const mergedUser = {
+              ...parsed,
+              ...userData,
+              name: userData.fullName || userData.name || parsed.name || auth.currentUser?.displayName || 'Học sinh',
+              avatar: userData.avatar || parsed.avatar || auth.currentUser?.photoURL || ''
+            };
+
+            setUser(mergedUser);
+            setZalo(mergedUser.zalo || '');
+            localStorage.setItem('hmath_user', JSON.stringify(mergedUser));
+         } else {
+            const fallbackUser = {
+              name: auth.currentUser?.displayName || 'Học sinh',
+              email: auth.currentUser?.email || '',
+              avatar: auth.currentUser?.photoURL || ''
+            };
+            setUser(fallbackUser);
          }
 
          // Load prices & payment settings
@@ -709,15 +719,24 @@ export function StudentProfile() {
                   <div className="h-24 bg-gradient-to-br from-indigo-500 to-slate-900"></div>
                   <div className="px-6 pb-6">
                      <div className="flex justify-between items-end -mt-10 mb-4">
-                        <div className="w-20 h-20 rounded-2xl bg-white p-1.5 shadow-sm border border-slate-100 flex items-center justify-center">
-                           <div className="w-full h-full bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-bold text-xl uppercase">
-                              {user.fullName ? user.fullName[0] : 'U'}
-                           </div>
+                        <div className="w-20 h-20 rounded-2xl bg-white p-1.5 shadow-sm border border-slate-100 flex items-center justify-center overflow-hidden">
+                           {user.avatar ? (
+                              <img
+                                 src={user.avatar}
+                                 alt={user.name || user.fullName || 'Học sinh'}
+                                 className="w-full h-full object-cover rounded-xl"
+                                 referrerPolicy="no-referrer"
+                              />
+                           ) : (
+                              <div className="w-full h-full bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-bold text-xl uppercase">
+                                 {(user.name || user.fullName || 'U')[0]}
+                              </div>
+                           )}
                         </div>
                      </div>
 
                      <h2 className="text-xl font-bold text-slate-800 flex items-center gap-1.5">
-                        {user.fullName}
+                        {user.name || user.fullName || 'Học sinh'}
                         {isVip && <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Star className="w-3.5 h-3.5 fill-amber-700"/> VIP</span>}
                      </h2>
                      <p className="text-slate-500 text-sm font-medium">Học sinh - Hệ thống HMath</p>
