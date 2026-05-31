@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile } from './StudentPages';
-import { collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { getCategoryBadgeStyle } from '../components/ExamManager';
 
@@ -173,8 +173,10 @@ function StudentHome() {
     setError(null);
 
     const examsRef = collection(db, 'exams');
+    const publicExamsQuery = query(examsRef, where('isPublic', '==', true));
+
     const unsubscribe = onSnapshot(
-      examsRef,
+      publicExamsQuery,
       (examSnap) => {
         setExams(toSortedExamList(examSnap));
         setLoading(false);
@@ -182,7 +184,7 @@ function StudentHome() {
       },
       (err) => {
         console.error('Error subscribing to exams:', err);
-        getDocs(examsRef)
+        getDocs(publicExamsQuery)
           .then((examSnap) => {
             setExams(toSortedExamList(examSnap));
             setLoading(false);
