@@ -297,13 +297,6 @@ export function TeacherSettings() {
          <div className="space-y-5">
            <h3 className="text-md font-bold text-slate-800 border-l-4 border-indigo-500 pl-3 uppercase tracking-wider text-xs">Cấu hình chung</h3>
            
-           <div>
-             <label className="flex items-center gap-3 cursor-pointer">
-               <input type="checkbox" checked={settings.allowPublicRegistration} onChange={e => setSettings({...settings, allowPublicRegistration: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-               <span className="font-semibold text-slate-700">Cho phép học sinh tự do đăng ký tài khoản</span>
-             </label>
-             <p className="text-sm text-slate-500 ml-8 mt-1">Nếu tắt, học sinh chỉ có thể đăng nhập bằng tài khoản được giáo viên cấp.</p>
-           </div>
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
              <div>
