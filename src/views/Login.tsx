@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertCircle, GraduationCap } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
+  const navigate = useNavigate();
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -48,7 +50,12 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
             }
          }
       }
-      onLogin({ ...userData, uid: user.uid });
+      const loginData = { ...userData, uid: user.uid };
+      onLogin(loginData);
+      // Auto-navigate to dashboard after successful login
+      setTimeout(() => {
+        navigate(userData.role === 'student' ? '/' : '/admin');
+      }, 100);
     } catch (err: any) {
       setError(err.message);
     } finally {
