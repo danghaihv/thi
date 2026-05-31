@@ -18,37 +18,42 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Get or create user profile
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      // First, login with Firebase auth (don't wait for Firestore)
+      const initialUserData = {
+        email: user.email,
+        name: user.displayName || 'Google User',
+        role: user.email === 'pdanghai.mmo@gmail.com' ? 'teacher' : 'student',
+        uid: user.uid
+      };
       
-      let userData;
-      if (!userDoc?.exists()) {
-        userData = {
-          email: user.email,
-          name: user.displayName || 'Google User',
-          role: user.email === 'pdanghai.mmo@gmail.com' ? 'teacher' : 'student'
-        };
-        await setDoc(userDocRef, userData);
-      } else {
-        userData = userDoc.data() || {};
-        if (user.email === 'pdanghai.mmo@gmail.com' && userData.role !== 'teacher') {
-          userData.role = 'teacher';
-          await setDoc(userDocRef, { role: 'teacher' }, { merge: true });
+      onLogin(initialUserData);
+      localStorage.setItem('hmath_user', JSON.stringify(initialUserData));
+      
+      // Then try to get/create user profile in Firestore (non-blocking)
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (!userDoc?.exists()) {
+          const userData = {
+            email: user.email,
+            name: user.displayName || 'Google User',
+            role: user.email === 'pdanghai.mmo@gmail.com' ? 'teacher' : 'student'
+          };
+          await setDoc(userDocRef, userData);
+        } else {
+          const userData = userDoc.data() || {};
+          if (user.email === 'pdanghai.mmo@gmail.com' && userData.role !== 'teacher') {
+            await setDoc(userDocRef, { role: 'teacher' }, { merge: true });
+          }
         }
+      } catch (firestoreErr) {
+        console.warn('Firestore sync failed (non-blocking):', firestoreErr);
       }
-      
-      if (!userData) {
-        throw new Error('Failed to create user data');
-      }
-      
-      const loginData = { ...userData, uid: user.uid };
-      onLogin(loginData);
-      localStorage.setItem('hmath_user', JSON.stringify(loginData));
       
       // Auto-navigate to dashboard after successful login
       setTimeout(() => {
-        navigate(userData.role === 'student' ? '/' : '/admin');
+        navigate(initialUserData.role === 'student' ? '/' : '/admin');
       }, 100);
     } catch (err: any) {
       console.error('Login error:', err);
