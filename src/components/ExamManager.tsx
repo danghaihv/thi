@@ -570,9 +570,9 @@ function ExamEditor({ exam: initialExam, onSave, onCancel }: { exam: Exam, onSav
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Danh mục đề thi</label>
-                <select 
-                  value={exam.category || 'Đề ôn tập bài học/chương'} 
-                  onChange={e => setExam({...exam, category: e.target.value as any})} 
+                <select
+                  value={exam.category || 'Đề ôn tập bài học/chương'}
+                  onChange={e => setExam({...exam, category: e.target.value as any})}
                   className="w-full border border-slate-200 rounded-lg p-2.5 focus:border-indigo-500 outline-none bg-white font-medium"
                 >
                   <option value="Đề ôn tập bài học/chương">📘 Đề ôn tập bài học/chương</option>
@@ -582,6 +582,18 @@ function ExamEditor({ exam: initialExam, onSave, onCancel }: { exam: Exam, onSav
                   <option value="Đề ôn tập HK2">📕 Đề ôn tập HK2</option>
                   <option value="Đề khảo sát">💚 Đề khảo sát</option>
                   <option value="Đề HSG">👑 Đề HSG</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Trạng thái hiển thị</label>
+                <select
+                  value={exam.isPublic === false ? 'draft' : 'public'}
+                  onChange={e => setExam({ ...exam, isPublic: e.target.value === 'public' })}
+                  className="w-full border border-slate-200 rounded-lg p-2.5 focus:border-indigo-500 outline-none bg-white font-medium"
+                >
+                  <option value="public">Hiển thị ngay (Công khai)</option>
+                  <option value="draft">Lưu nháp (Ẩn với học sinh)</option>
                 </select>
               </div>
             </div>
