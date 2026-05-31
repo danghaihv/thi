@@ -611,26 +611,45 @@ export function StudentProfile() {
       }
    };
 
-   const initiateCheckout = (packType: '1m' | '6m' | '1y') => {
-      let amount = pricing.vip1MonthPrice;
-      let days = 30;
-      let name = "VIP 1 tháng";
+   const initiateCheckout = async (packType: '1m' | '6m' | '1y') => {
+      if (!auth.currentUser) return;
 
-      if (packType === '6m') {
-         amount = pricing.vip6MonthPrice;
-         days = 180;
-         name = "VIP 6 tháng";
-      } else if (packType === '1y') {
-         amount = pricing.vip1YearPrice;
-         days = 365;
-         name = "VIP 1 năm";
-      }
-
-      // Generate a short 6-character unique code for the memo
-      const randomCode = Math.random().toString(36).substring(3, 9).toUpperCase();
-      setPaymentMemo(`HMVIP${randomCode}`);
-      setCheckoutPack({ type: packType, amount, days, name });
+      setIsCheckingPayment(true);
       setCheckMessage('');
+      setCheckoutPack(null);
+      setPaymentMemo('');
+
+      try {
+         const response = await fetch("/api/payment/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+               userId: auth.currentUser.uid,
+               packType,
+            }),
+         });
+         const data = await response.json();
+
+         if (!response.ok) {
+            setCheckMessage(data.error || data.message || "Không thể tạo hóa đơn. Vui lòng thử lại.");
+            setIsCheckingPayment(false);
+            return;
+         }
+
+         setCheckoutPack({
+            type: packType,
+            amount: data.amount,
+            days: data.days,
+            name: data.label,
+         });
+         setPaymentMemo(data.memo);
+         setCheckMessage('');
+      } catch (err: any) {
+         console.error("Create payment error:", err);
+         setCheckMessage("Lỗi kết nối server: " + err.message);
+      } finally {
+         setIsCheckingPayment(false);
+      }
    };
 
    const handleCopy = (text: string, label: string) => {

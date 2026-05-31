@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ExamManager } from '../components/ExamManager';
-import { Users, Shield } from 'lucide-react';
+import { Users, Shield, Loader2 } from 'lucide-react';
 import { collection, query, where, doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
@@ -244,10 +244,13 @@ export function TeacherSettings() {
       sepayApiKey: '',
       sepayBankId: '',
       sepayAccountNo: '',
-      sepayAccountName: ''
+      sepayAccountName: '',
+      sepayWebhookToken: '',
    });
    const [isSaving, setIsSaving] = useState(false);
    const [message, setMessage] = useState('');
+   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+   const [testMsg, setTestMsg] = useState('');
 
    useEffect(() => {
      const fetchSettings = async () => {
@@ -259,7 +262,7 @@ export function TeacherSettings() {
          }
        } catch (err) {
          console.error("Error loading settings:", err);
-          handleFirestoreError(err, OperationType.GET, 'settings/global');
+         handleFirestoreError(err, OperationType.GET, 'settings/global');
        }
      };
      fetchSettings();
@@ -277,6 +280,32 @@ export function TeacherSettings() {
          handleFirestoreError(err, OperationType.WRITE, 'settings/global');
       } finally {
          setIsSaving(false);
+      }
+   };
+
+   const testSepayConnection = async () => {
+      if (!settings.sepayApiKey) {
+         setTestStatus('fail');
+         setTestMsg('Vui lòng nhập SePay API Token trước.');
+         return;
+      }
+      setTestStatus('testing');
+      setTestMsg('Đang kết nối cổng SePay...');
+      try {
+         const response = await fetch("https://apiquery.sepay.vn/transactions/list", {
+            headers: { "Authorization": `Bearer ${settings.sepayApiKey}`, "Content-Type": "application/json" }
+         });
+         if (response.ok) {
+            setTestStatus('ok');
+            setTestMsg('Kết nối SePay thành công! Giao dịch sẵn sàng đối soát.');
+         } else {
+            const err = await response.text();
+            setTestStatus('fail');
+            setTestMsg(`Lỗi SePay (${response.status}): ${err.slice(0, 100)}`);
+         }
+      } catch (err: any) {
+         setTestStatus('fail');
+         setTestMsg('Không thể kết nối SePay. Kiểm tra lại API Token.');
       }
    };
 
@@ -351,22 +380,19 @@ export function TeacherSettings() {
          <div className="space-y-5 pt-6 border-t border-slate-100">
            <h3 className="text-md font-bold text-slate-800 border-l-4 border-indigo-500 pl-3 uppercase tracking-wider text-xs">Kết nối thanh toán qua SePay QR</h3>
            <p className="text-sm text-slate-500">Giúp học sinh tự động quét mã QR, hệ thống tự đối soát và kích hoạt VIP ngay lập tức khi tiền về tài khoản ngân hàng của bạn thông qua cổng SePay.</p>
+           {settings.sepayWebhookToken ? (
+             <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+               <p className="text-xs font-semibold text-blue-700 mb-1">🔗 Webhook URL cần đăng ký trong SePay:</p>
+               <code className="text-xs font-mono text-blue-800 break-all bg-blue-100 px-2 py-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/payment/webhook/sepay</code>
+               <p className="text-[10px] text-blue-600 mt-1">Vào SePay → Cài đặt Webhook → Dán URL trên và đặt method = POST, content type = JSON.</p>
+             </div>
+           ) : null}
            
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
              <div>
                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Ngân hàng thụ hưởng</label>
                <select value={settings.sepayBankId || ''} onChange={e => setSettings({...settings, sepayBankId: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium bg-white">
-                 <option value="">-- Chọn ngân hàng --</option>
-                 <option value="MB">MB Bank (Ngân hàng Quân Đội)</option>
-                 <option value="VCB">Vietcombank</option>
-                 <option value="TCB">Techcombank</option>
-                 <option value="ACB">ACB Bank</option>
-                 <option value="BIDV">BIDV</option>
-                 <option value="ICB">VietinBank</option>
-                 <option value="VBA">Agribank</option>
-                 <option value="VPB">VPBank</option>
-                 <option value="TPB">TPBank</option>
-                  <option value="MSB">MSB (Ngân hàng Hàng Hải Việt Nam)</option>
+                 <option value="MSB">MSB (Ngân hàng Hàng Hải Việt Nam)</option>
                </select>
              </div>
 
@@ -384,7 +410,32 @@ export function TeacherSettings() {
                <label className="block text-sm font-semibold text-slate-700 mb-1.5">SePay API API Token (Authorization Bearer Token)</label>
                <input type="password" placeholder="sepay_apitoken_..." value={settings.sepayApiKey || ''} onChange={e => setSettings({...settings, sepayApiKey: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium" />
              </div>
+
+             <div>
+               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Webhook Token bảo mật (tùy chọn)</label>
+               <input type="password" placeholder="Token để xác thực webhook từ SePay" value={settings.sepayWebhookToken || ''} onChange={e => setSettings({...settings, sepayWebhookToken: e.target.value})} className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 font-medium" />
+               <p className="text-[10px] text-slate-400 mt-1">Lấy từ SePay → Webhook Settings → Copy Token. Dùng cho webhook tự động.</p>
+             </div>
            </div>
+
+           <button
+             type="button"
+             onClick={testSepayConnection}
+             disabled={testStatus === 'testing'}
+             className={`mt-3 flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+               testStatus === 'ok'
+                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                 : testStatus === 'fail'
+                 ? 'bg-rose-50 border-rose-200 text-rose-700'
+                 : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700'
+             }`}
+           >
+             {testStatus === 'testing' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+             {testStatus === 'ok' ? '✓ Kết nối thành công' : testStatus === 'fail' ? '✗ Kết nối thất bại' : '🔗 Kiểm tra kết nối SePay'}
+           </button>
+           {testMsg && (
+             <p className={`text-xs font-medium mt-1 ${testStatus === 'ok' ? 'text-emerald-600' : 'text-rose-600'}`}>{testMsg}</p>
+           )}
          </div>
 
          <div className="pt-6 border-t border-slate-100 flex items-center gap-4">

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { doc, getDoc } from "firebase/firestore";
-import { applyVipUpgrade, db } from "./_shared";
+import { applyVipUpgrade } from "./_shared";
+import { getDb } from "./_shared";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -13,6 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const db = getDb();
     const settingsRef = doc(db, "settings", "global");
     const settingsSnap = await getDoc(settingsRef);
     if (!settingsSnap.exists()) {

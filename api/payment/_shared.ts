@@ -3,7 +3,7 @@ import path from "path";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
-function getDb() {
+export function getDb() {
   let firebaseConfig: any = {};
   try {
     firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
@@ -84,4 +84,10 @@ export async function hasProcessedTx(sepayTxId: string) {
   const paymentsRef = collection(db, "payments");
   const existingByTx = await getDocs(query(paymentsRef, where("sepayTxId", "==", sepayTxId), where("status", "==", "completed")));
   return !existingByTx.empty;
+}
+
+export async function getSepayWebhookToken(): Promise<string> {
+  const db = getDb();
+  const settingsSnap = await getDoc(doc(db, "settings", "global"));
+  return settingsSnap.exists() ? (settingsSnap.data().sepayWebhookToken || "") : "";
 }

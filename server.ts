@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 let firebaseConfig: any = {};
 try {
@@ -209,7 +209,8 @@ async function startServer() {
   });
 
   app.post("/api/payment/webhook/sepay", async (req, res) => {
-    const token = process.env.SEPAY_WEBHOOK_TOKEN;
+    const settingsSnap = await getDoc(doc(db, "settings", "global"));
+    const token = settingsSnap.exists() ? (settingsSnap.data() as any).sepayWebhookToken : "";
     if (!token) {
       return res.status(500).json({ success: false, message: "Server chưa cấu hình SEPAY_WEBHOOK_TOKEN." });
     }
@@ -271,6 +272,110 @@ async function startServer() {
 
   app.get("/api/payment/webhook/sepay", (req, res) => {
     res.json({ success: true, message: "SePay webhook endpoint is ready." });
+  });
+
+  app.post("/api/payment/create", async (req, res) => {
+    const { userId, packType } = req.body;
+    if (!userId || !packType) {
+      return res.status(400).json({ error: "Thiếu userId hoặc packType." });
+    }
+
+    const packMap: Record<string, { days: number; amount: number; label: string }> = {
+      "1m": { days: 30, amount: 0, label: "VIP 1 tháng" },
+      "6m": { days: 180, amount: 0, label: "VIP 6 tháng" },
+      "1y": { days: 365, amount: 0, label: "VIP 1 năm" },
+    };
+    const pack = packMap[packType];
+    if (!pack) {
+      return res.status(400).json({ error: "Gói VIP không hợp lệ." });
+    }
+
+    try {
+      const settingsRef = doc(db, "settings", "global");
+      const settingsSnap = await getDoc(settingsRef);
+      if (!settingsSnap.exists()) {
+        return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
+      }
+      const settingsData: any = settingsSnap.data();
+
+      if (!settingsData.sepayApiKey) {
+        return res.status(400).json({ error: "Giáo viên chưa kết nối cổng SePay API." });
+      }
+
+      const amount = packType === "1m"
+        ? Number(settingsData.vip1MonthPrice || 50000)
+        : packType === "6m"
+        ? Number(settingsData.vip6MonthPrice || 240000)
+        : Number(settingsData.vip1YearPrice || 450000);
+
+      const userRef = doc(db, "users", userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh." });
+      }
+
+      const userData: any = userSnap.data();
+      const userName = (userData.fullName || userData.name || "USER").replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 20);
+      const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const memo = `HM${userName}${randomCode}`;
+
+      await setDoc(doc(db, "payments", memo), {
+        userId,
+        userEmail: userData.email || "",
+        userName: userData.name || userData.fullName || "",
+        amount,
+        days: pack.days,
+        packType,
+        label: pack.label,
+        memo,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        sepayTxId: "",
+      }, { merge: true });
+
+      return res.json({
+        success: true,
+        memo,
+        amount,
+        days: pack.days,
+        label: pack.label,
+        bankId: settingsData.sepayBankId || "",
+        accountNo: settingsData.sepayAccountNo || "",
+        accountName: settingsData.sepayAccountName || "",
+      });
+    } catch (err: any) {
+      console.error("Create payment error:", err);
+      return res.status(500).json({ error: "Lỗi tạo hóa đơn: " + err.message });
+    }
+  });
+
+  app.get("/api/payment/pricing", async (req, res) => {
+    try {
+      const settingsRef = doc(db, "settings", "global");
+      const settingsSnap = await getDoc(settingsRef);
+      if (!settingsSnap.exists()) {
+        return res.json({
+          vip1MonthPrice: 50000,
+          vip6MonthPrice: 240000,
+          vip1YearPrice: 450000,
+          sepayBankId: "",
+          sepayAccountNo: "",
+          sepayAccountName: "",
+        });
+      }
+      const data: any = settingsSnap.data();
+      return res.json({
+        vip1MonthPrice: Number(data.vip1MonthPrice || 50000),
+        vip6MonthPrice: Number(data.vip6MonthPrice || 240000),
+        vip1YearPrice: Number(data.vip1YearPrice || 450000),
+        sepayBankId: data.sepayBankId || "",
+        sepayAccountNo: data.sepayAccountNo || "",
+        sepayAccountName: data.sepayAccountName || "",
+      });
+    } catch (err: any) {
+      console.error("Get pricing error:", err);
+      return res.status(500).json({ error: "Lỗi lấy cấu hình giá: " + err.message });
+    }
   });
 
 
