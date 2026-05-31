@@ -210,8 +210,52 @@ function StudentHome() {
           },
           (err) => {
             console.error("Error subscribing to exams:", err);
-            setError(`Lỗi tải đề thi: ${err.message || String(err)}`);
-            setLoading(false);
+            console.error("Error code:", err.code);
+            console.error("Error message:", err.message);
+            
+            // Try fallback with getDocs
+            console.log('Trying fallback with getDocs...');
+            getDocs(collection(db, 'exams'))
+              .then((examSnap) => {
+                console.log('Fallback: Exams retrieved:', examSnap.size, 'documents');
+                const publicExams: any[] = [];
+                examSnap.forEach(doc => {
+                  const data = doc.data();
+                  let hash = 0;
+                  for (let i = 0; i < doc.id.length; i++) {
+                    hash = doc.id.charCodeAt(i) + ((hash << 5) - hash);
+                  }
+                  const fakeAttempts = Math.abs(hash % 900) + 120;
+
+                  publicExams.push({
+                    id: doc.id,
+                    title: data.title,
+                    grade: data.grade,
+                    timeLimit: data.timeLimit,
+                    questionCount: data.questions?.length || 0,
+                    totalScore: data.totalScore || 10,
+                    submissionCount: fakeAttempts,
+                    difficulty: data.difficulty || 'Trung bình',
+                    category: data.category || 'Đề ôn tập bài học/chương',
+                    createdAt: data.createdAt || ''
+                  });
+                });
+
+                publicExams.sort((a, b) => {
+                  const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                  const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                  return dateB - dateA;
+                });
+
+                setExams(publicExams);
+                setLoading(false);
+                setError(null);
+              })
+              .catch((fallbackErr) => {
+                console.error('Fallback also failed:', fallbackErr);
+                setError(`Lỗi tải đề thi: ${err.message || fallbackErr.message}`);
+                setLoading(false);
+              });
           }
         );
       } catch (err: any) {
