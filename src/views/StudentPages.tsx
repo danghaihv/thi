@@ -236,6 +236,29 @@ export function StudentHistory() {
            if (row.examId) examIds.add(String(row.examId));
          });
 
+         list.sort((a, b) => {
+           const timeA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+           const timeB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+           return timeB - timeA;
+         });
+
+         setMockHistory(list);
+
+         const nextTitleMap: Record<string, string> = {};
+         await Promise.all(Array.from(examIds).map(async (examId) => {
+           try {
+             const examDoc = await getDoc(doc(db, 'exams', examId));
+             if (examDoc.exists()) {
+               const examData: any = examDoc.data();
+               nextTitleMap[examId] = examData.title || examId;
+             }
+           } catch {
+             nextTitleMap[examId] = examId;
+           }
+         }));
+
+         setExamTitleMap(nextTitleMap);
+         return;
          const nextTitleMap: Record<string, string> = {};
          await Promise.all(Array.from(examIds).map(async (examId) => {
            try {
