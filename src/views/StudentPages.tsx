@@ -561,13 +561,29 @@ export function StudentProfile() {
             })
          });
 
-         const data = await response.json();
-         if (!response.ok) {
-            setCheckMessage(data.error || "Giao dịch lỗi, vui lòng thử lại sau.");
+         const contentType = response.headers.get("content-type") || "";
+         let data: any = null;
+
+         if (contentType.includes("application/json")) {
+            data = await response.json();
+         } else {
+            const rawText = await response.text();
+            const snippet = rawText.slice(0, 200).replace(/\s+/g, ' ').trim();
+            console.error("SePay verify returned non-JSON response", {
+               status: response.status,
+               contentType,
+               snippet
+            });
+            setCheckMessage("Máy chủ đối soát đang trả dữ liệu không hợp lệ. Vui lòng thử lại sau ít phút.");
             return;
          }
 
-         if (data.success) {
+         if (!response.ok) {
+            setCheckMessage(data?.error || data?.message || "Giao dịch lỗi, vui lòng thử lại sau.");
+            return;
+         }
+
+         if (data?.success) {
             setCheckMessage("Đã nhận thanh toán! Tài khoản của bạn đã được nâng cấp VIP thành công 🎉!");
             setTimeout(() => {
                setCheckoutPack(null);
