@@ -56,6 +56,7 @@ export function ExamManager() {
   const [filterMode, setFilterMode] = useState<number | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | ExamCategory>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'Cơ bản' | 'Trung bình' | 'Nâng cao'>('all');
+  const [publishFilter, setPublishFilter] = useState<'all' | 'published' | 'draft'>('all');
   
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -201,7 +202,8 @@ export function ExamManager() {
     const matchGrade = filterMode === 'all' || String(exam.grade) === String(filterMode);
     const matchCategory = categoryFilter === 'all' || exam.category === categoryFilter;
     const matchDifficulty = difficultyFilter === 'all' || (exam.difficulty || 'Trung bình') === difficultyFilter;
-    return matchGrade && matchCategory && matchDifficulty;
+    const matchPublish = publishFilter === 'all' || (publishFilter === 'published' ? exam.isPublic === true : exam.isPublic !== true);
+    return matchGrade && matchCategory && matchDifficulty && matchPublish;
   });
 
   const handleSelectAllFiltered = (e: ChangeEvent<HTMLInputElement>) => {
@@ -303,8 +305,8 @@ export function ExamManager() {
             <Filter className="w-3.5 h-3.5"/> Mức độ:
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <button 
-              onClick={() => setDifficultyFilter('all')} 
+            <button
+              onClick={() => setDifficultyFilter('all')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${difficultyFilter === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'hover:bg-slate-150 text-slate-600 bg-slate-50 hover:bg-slate-100'}`}
             >
               Tất cả mức độ
@@ -317,9 +319,9 @@ export function ExamManager() {
 
               const isSelected = difficultyFilter === diff;
               return (
-                <button 
-                  key={diff} 
-                  onClick={() => setDifficultyFilter(diff)} 
+                <button
+                  key={diff}
+                  onClick={() => setDifficultyFilter(diff)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-transparent ${isSelected ? badgeColor : 'hover:bg-slate-150 text-slate-600 bg-slate-50 hover:bg-slate-100'}`}
                 >
                   <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${diff === 'Cơ bản' ? 'bg-blue-500' : diff === 'Trung bình' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
@@ -327,6 +329,33 @@ export function ExamManager() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Trạng thái publish filter */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3.5 border-t border-slate-100">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest shrink-0 min-w-[120px] flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5"/> Trạng thái:
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setPublishFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${publishFilter === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'hover:bg-slate-150 text-slate-600 bg-slate-50 hover:bg-slate-100'}`}
+            >
+              Tất cả
+            </button>
+            <button
+              onClick={() => setPublishFilter('published')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${publishFilter === 'published' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm' : 'text-slate-600 bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Đã đăng
+            </button>
+            <button
+              onClick={() => setPublishFilter('draft')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${publishFilter === 'draft' ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' : 'text-slate-600 bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
+            >
+              Lưu nháp
+            </button>
           </div>
         </div>
       </div>
@@ -341,15 +370,6 @@ export function ExamManager() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 px-2">
-            <input 
-              type="checkbox" 
-              checked={selectedExams.size === filteredExams.length && filteredExams.length > 0} 
-              onChange={handleSelectAllFiltered}
-              className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-600 cursor-pointer" 
-            />
-            <span className="text-sm font-medium text-slate-600">Chọn tất cả đề hiển thị ({filteredExams.length})</span>
-          </div>
 
           {filteredExams.length === 0 ? (
             <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-10 text-center text-slate-500 font-medium h-48 flex flex-col justify-center items-center">
