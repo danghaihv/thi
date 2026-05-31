@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 let firebaseConfig: any = {};
@@ -19,7 +19,7 @@ const resolvedConfig = {
   appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || firebaseConfig.appId,
 };
 
-const firebaseApp = initializeApp(resolvedConfig);
+const firebaseApp = getApps().length ? getApp() : initializeApp(resolvedConfig);
 const db = getFirestore(firebaseApp);
 
 export { db };
