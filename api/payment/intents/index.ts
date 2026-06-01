@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { doc, getDoc } from "firebase/firestore";
-import { createPaymentIntent, getDb } from "../_shared.js";
+import { createPaymentIntent, getDb } from "../_shared";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
