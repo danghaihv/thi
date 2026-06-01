@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { doc, getDoc } from "firebase/firestore";
 import { findIntentByMemo, fulfillIntentWithTx } from "./_shared.js";
 import { getDb } from "./_shared.js";
 
@@ -23,8 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getDb();
-    const settingsSnap = await db.collection("settings").doc("global").get();
-    if (!settingsSnap.exists) {
+    const settingsSnap = await getDoc(doc(db, "settings", "global"));
+    if (!settingsSnap.exists()) {
       return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
     }
 

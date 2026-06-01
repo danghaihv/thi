@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { doc, getDoc } from "firebase/firestore";
 import { createPaymentIntent, getDb } from "../_shared.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -11,8 +12,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getDb();
-    const settingsSnap = await db.collection("settings").doc("global").get();
-    if (!settingsSnap.exists) return res.status(400).json({ error: "Hệ thống chưa thiết lập bảng giá VIP." });
+    const settingsSnap = await getDoc(doc(db, "settings", "global"));
+    if (!settingsSnap.exists()) return res.status(400).json({ error: "Hệ thống chưa thiết lập bảng giá VIP." });
 
     const settings: any = settingsSnap.data();
     const plans: Record<string, { days: number; amount: number; label: string }> = {
