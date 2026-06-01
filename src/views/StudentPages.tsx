@@ -661,6 +661,24 @@ export function StudentProfile() {
       setTimeout(() => setCopiedField(null), 2000);
    };
 
+   const downloadQrImage = async () => {
+      if (!qrUrl) return;
+      try {
+         const response = await fetch(qrUrl);
+         const blob = await response.blob();
+         const objectUrl = URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = objectUrl;
+         a.download = `sepay-qr-${paymentMemo || 'hmath'}.png`;
+         document.body.appendChild(a);
+         a.click();
+         document.body.removeChild(a);
+         URL.revokeObjectURL(objectUrl);
+      } catch (err) {
+         console.error('Download QR error:', err);
+      }
+   };
+
    const verifyPayment = async () => {
       if (!checkoutPack || !paymentIntentId) return;
       setIsCheckingPayment(true);
@@ -870,9 +888,11 @@ export function StudentProfile() {
                               <h5 className="font-bold text-slate-800 text-sm mt-2">Gói 1 tháng</h5>
                               <p className="text-indigo-600 font-extrabold text-lg mt-3">{(pricing.vip1MonthPrice).toLocaleString('vi-VN')}đ</p>
                            </div>
-                           <button 
-                              onClick={() => initiateCheckout('1m')}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer"
+                           <button
+                              type="button"
+                              onClick={() => void initiateCheckout('1m')}
+                              disabled={isCheckingPayment}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer disabled:opacity-60"
                            >
                               {isVip ? 'Gia hạn 30 ngày' : 'Nâng cấp ngay'}
                            </button>
@@ -887,9 +907,11 @@ export function StudentProfile() {
                               <p className="text-indigo-600 font-extrabold text-lg mt-3">{(pricing.vip6MonthPrice).toLocaleString('vi-VN')}đ</p>
                               <span className="text-[10px] text-slate-400">Tiết kiệm khoảng 20%</span>
                            </div>
-                           <button 
-                              onClick={() => initiateCheckout('6m')}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer shadow-sm"
+                           <button
+                              type="button"
+                              onClick={() => void initiateCheckout('6m')}
+                              disabled={isCheckingPayment}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer shadow-sm disabled:opacity-60"
                            >
                               {isVip ? 'Gia hạn 180 ngày' : 'Nâng cấp ngay'}
                            </button>
@@ -903,9 +925,11 @@ export function StudentProfile() {
                               <p className="text-indigo-600 font-extrabold text-lg mt-3">{(pricing.vip1YearPrice).toLocaleString('vi-VN')}đ</p>
                               <span className="text-[10px] text-slate-400">Tiết kiệm khoảng 25%</span>
                            </div>
-                           <button 
-                              onClick={() => initiateCheckout('1y')}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer"
+                           <button
+                              type="button"
+                              onClick={() => void initiateCheckout('1y')}
+                              disabled={isCheckingPayment}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer disabled:opacity-60"
                            >
                               {isVip ? 'Gia hạn 365 ngày' : 'Nâng cấp ngay'}
                            </button>
@@ -954,9 +978,16 @@ export function StudentProfile() {
                               <div className="w-[240px] h-[240px] bg-slate-100 text-slate-400 flex items-center justify-center rounded-2xl">Mã QR thất bại</div>
                            )}
 
-                           <div className="mt-4 text-xs text-slate-500 flex flex-col items-center gap-1.5 font-medium">
+                           <div className="mt-4 text-xs text-slate-500 flex flex-col items-center gap-2 font-medium">
                               <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5 text-emerald-500" /> Hỗ trợ mọi ngân hàng (MB, VCB, Techcombank,...)</span>
                               <span>Mở ứng dụng ngân hàng và bấm "Quét mã"</span>
+                              <button
+                                 type="button"
+                                 onClick={downloadQrImage}
+                                 className="mt-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50"
+                              >
+                                 Tải mã QR
+                              </button>
                            </div>
                         </div>
 
