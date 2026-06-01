@@ -36,19 +36,31 @@ function verifyHmac(req: VercelRequest, secret: string): boolean {
 }]}{
 
 function verifyLegacyToken(req: VercelRequest, secret: string): boolean {
-  const authHeader = String(req.headers.authorization || "");
-  const requestToken = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : String(req.headers["x-sepay-token"] || "").trim();
-  return requestToken === secret;
-}
+  const authHeader = String(req.headers.authorization || "").trim();
+
+  // SePay API Key mode often sends: Authorization: Apikey <token>
+  if (authHeader.toLowerCase().startsWith("apikey ")) {
+    const requestToken = authHeader.slice(7).trim();
+    return requestToken === secret;
+  }
+
+  if (authHeader.startsWith("Bearer ")) {
+    const requestToken = authHeader.slice(7).trim();
+    return requestToken === secret;
+  }
+
+  const xToken = String(req.headers["x-sepay-token"] || "").trim();
+  return xToken === secret;
+}]}{
 
 function isFreshTimestamp(req: VercelRequest): boolean {
-  const ts = Number(req.headers["x-sepay-timestamp"] || 0);
+  const raw = req.headers["x-sepay-timestamp"];
+  if (raw === undefined || raw === null || String(raw).trim() === "") return true;
+  const ts = Number(raw);
   if (!ts) return true;
   const now = Math.floor(Date.now() / 1000);
   return Math.abs(now - ts) <= 300;
-}
+}]}{
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
