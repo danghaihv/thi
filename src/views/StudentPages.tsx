@@ -621,9 +621,14 @@ export function StudentProfile() {
 
       setIsCheckingPayment(true);
       setCheckMessage('');
-      setCheckoutPack(null);
-      setPaymentMemo('');
       setPaymentIntentId('');
+      setPaymentMemo('');
+      setCheckoutPack({ type: packType, amount: 0, days: 0, name: 'Đang tạo hóa đơn...' });
+
+      // Force overlay open immediately so users always see loading state
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      setCheckoutPack(null);
 
       try {
          const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
