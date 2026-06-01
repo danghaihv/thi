@@ -84,12 +84,24 @@ export function StudentCheckout() {
     if (!intentId) return;
     setIsChecking(true);
     try {
-      const resp = await fetch(`/api/payment/intents/${intentId}`);
-      const data = await resp.json();
-      if (!resp.ok) {
-        setMessage(data.error || 'Không thể kiểm tra trạng thái.');
+      const resp = await fetch(`/api/payment/intents/status?intentId=${encodeURIComponent(intentId)}`);
+      const contentType = resp.headers.get('content-type') || '';
+      let data: any = null;
+
+      if (contentType.includes('application/json')) {
+        data = await resp.json();
+      } else {
+        const rawText = await resp.text();
+        const snippet = rawText.slice(0, 160).replace(/\s+/g, ' ').trim();
+        setMessage(`Lỗi kiểm tra trạng thái thanh toán: Máy chủ trả dữ liệu không hợp lệ (${snippet})`);
         return;
       }
+
+      if (!resp.ok) {
+        setMessage(data?.error || 'Không thể kiểm tra trạng thái.');
+        return;
+      }
+
       const status = data?.intent?.status;
       if (status === 'fulfilled') {
         setMessage('Đã nhận thanh toán! Tài khoản của bạn đã được nâng cấp VIP thành công 🎉!');
