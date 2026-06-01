@@ -22,10 +22,18 @@ function verifyHmac(req: VercelRequest, secret: string): boolean {
   const timestamp = String(req.headers["x-sepay-timestamp"] || "").trim();
   if (!signature || !timestamp) return false;
 
-  const rawBody = typeof req.body === "object" ? stableStringify(req.body) : String(req.body || "");
-  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
-  return safeEqual(signature, expected);
-}
+  const variants = [
+    typeof req.body === "object" ? JSON.stringify(req.body) : String(req.body || ""),
+    typeof req.body === "object" ? stableStringify(req.body) : String(req.body || ""),
+  ];
+
+  for (const bodyVariant of variants) {
+    const expected = "sha256=" + crypto.createHmac("sha256", secret).update(`${timestamp}.${bodyVariant}`).digest("hex");
+    if (safeEqual(signature, expected)) return true;
+  }
+
+  return false;
+}]}{
 
 function verifyLegacyToken(req: VercelRequest, secret: string): boolean {
   const authHeader = String(req.headers.authorization || "");
@@ -70,19 +78,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const memo = String(payload.content || payload.transaction_content || payload.description || "").trim().toUpperCase();
     const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
     const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || "").trim();
-    const paymentCode = String(payload.code || "").trim().toUpperCase();
-
     if (!memo || !amount || !sepayTxId) {
       console.error("Webhook missing data:", { memo, amount, sepayTxId });
       return res.status(400).json({ success: false, message: "Webhook thiếu thông tin memo/amount/transaction id." });
     }
 
-    // Validate payment code: must start with HMATH prefix
-    const codePrefix = process.env.PAYMENT_CODE_PREFIX || "HMATH";
-    if (!paymentCode || !paymentCode.startsWith(codePrefix)) {
-      console.warn(`Invalid payment code. Expected prefix: ${codePrefix}, Got: ${paymentCode}`);
-      return res.status(400).json({ success: false, message: `Mã thanh toán phải bắt đầu với tiền tố ${codePrefix}.` });
-    }
+    console.log("Webhook received", {
+      sepayTxId,
+      memo,
+      amount,
+      ts: req.headers["x-sepay-timestamp"] || null,
+    });
 
     const alreadyProcessed = await hasProcessedTx(sepayTxId);
     if (alreadyProcessed) {
@@ -94,6 +100,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!intent) {
       console.warn("No payment intent found for memo:", memo);
       return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
+    }
+
+    console.log("Intent matched", {
+      intentId: intent.intentId,
+      intentMemo: intent.memo,
+      intentAmount: intent.amountExpected,
+      intentStatus: intent.status,
+    });
+
+    if (intent.status === 'expired' || intent.status === 'canceled') {
+      return res.status(400).json({ success: false, message: "Hóa đơn đã hết hạn hoặc đã hủy." });
     }
 
     if (!intent.userId || !intent.memo || !intent.amountExpected || !intent.days) {
