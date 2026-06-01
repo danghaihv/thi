@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getDb();
     const settingsSnap = await getDoc(doc(db, "settings", "global"));
-    if (!settingsSnap.exists()) return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
+    if (!settingsSnap.exists()) return res.status(400).json({ error: "Hệ thống chưa thiết lập bảng giá VIP." });
 
     const settings: any = settingsSnap.data();
     const plans: Record<string, { days: number; amount: number; label: string }> = {
@@ -30,6 +30,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       days: selected.days,
     });
 
+    const bankId = process.env.SEPAY_BANK_ID || process.env.VITE_SEPAY_BANK_ID || "";
+    const accountNo = process.env.SEPAY_ACCOUNT_NO || process.env.VITE_SEPAY_ACCOUNT_NO || "";
+    const accountName = process.env.SEPAY_ACCOUNT_NAME || process.env.VITE_SEPAY_ACCOUNT_NAME || "";
+
+    if (!bankId || !accountNo || !accountName) {
+      return res.status(500).json({ error: "Thiếu cấu hình SePay trên môi trường server (SEPAY_BANK_ID/SEPAY_ACCOUNT_NO/SEPAY_ACCOUNT_NAME)." });
+    }
+
     return res.status(200).json({
       success: true,
       intentId: intent.intentId,
@@ -38,9 +46,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       days: selected.days,
       label: selected.label,
       expiresAt: intent.expiresAt,
-      bankId: settings.sepayBankId || "",
-      accountNo: settings.sepayAccountNo || "",
-      accountName: settings.sepayAccountName || "",
+      bankId,
+      accountNo,
+      accountName,
     });
   } catch (err: any) {
     console.error("Create intent error:", err);
