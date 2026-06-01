@@ -152,10 +152,12 @@ export async function fulfillIntentWithTx(params: { intent: any; sepayTxId: stri
 }
 
 export async function getSepayWebhookToken(): Promise<string> {
-  const fromEnv = process.env.SEPAY_WEBHOOK_TOKEN || "";
+  const fromEnv = process.env.SEPAY_WEBHOOK_TOKEN || process.env.SEPAY_API_KEY || "";
   if (fromEnv) return fromEnv;
 
   const db = getDb();
   const settingsSnap = await getDoc(doc(db, "settings", "global"));
-  return settingsSnap.exists() ? ((settingsSnap.data() as any).sepayWebhookToken || "") : "";
+  if (!settingsSnap.exists()) return "";
+  const settings: any = settingsSnap.data();
+  return settings.sepayWebhookToken || settings.sepayApiKey || "";
 }
