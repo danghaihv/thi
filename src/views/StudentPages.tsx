@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BookOpen, Trophy, Clock, Target, CalendarDays, History as HistoryIcon, FileText, Eye, X, User, Phone, Mail, Save, Sparkles, ShieldCheck, Check, Copy, RefreshCw, Star, AlertCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { collection, query, where, getDocs, doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -459,6 +460,7 @@ export function StudentHistory() {
 }
 
 export function StudentProfile() {
+   const navigate = useNavigate();
    const [user, setUser] = useState<any>(null);
    const [zalo, setZalo] = useState('');
    const [isSaving, setIsSaving] = useState(false);
@@ -906,9 +908,8 @@ export function StudentProfile() {
                            </div>
                            <button
                               type="button"
-                              onClick={() => void initiateCheckout('1m')}
-                              disabled={isCheckingPayment}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer disabled:opacity-60"
+                              onClick={() => navigate('/checkout?plan=vip_1m')}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer"
                            >
                               {isVip ? 'Gia hạn 30 ngày' : 'Nâng cấp ngay'}
                            </button>
@@ -925,9 +926,8 @@ export function StudentProfile() {
                            </div>
                            <button
                               type="button"
-                              onClick={() => void initiateCheckout('6m')}
-                              disabled={isCheckingPayment}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer shadow-sm disabled:opacity-60"
+                              onClick={() => navigate('/checkout?plan=vip_6m')}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer shadow-sm"
                            >
                               {isVip ? 'Gia hạn 180 ngày' : 'Nâng cấp ngay'}
                            </button>
@@ -943,9 +943,8 @@ export function StudentProfile() {
                            </div>
                            <button
                               type="button"
-                              onClick={() => void initiateCheckout('1y')}
-                              disabled={isCheckingPayment}
-                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer disabled:opacity-60"
+                              onClick={() => navigate('/checkout?plan=vip_1y')}
+                              className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer"
                            >
                               {isVip ? 'Gia hạn 365 ngày' : 'Nâng cấp ngay'}
                            </button>

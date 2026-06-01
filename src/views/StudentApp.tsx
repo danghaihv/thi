@@ -3,6 +3,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile } from './StudentPages';
+import { StudentCheckout } from './StudentCheckoutPage.tmp';
 import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { getCategoryBadgeStyle } from '../components/ExamManager';
@@ -110,6 +111,7 @@ function StudentLayout() {
           <Route path="/dashboard" element={<RequireLogin><StudentDashboard /></RequireLogin>} />
           <Route path="/history" element={<RequireLogin><StudentHistory /></RequireLogin>} />
           <Route path="/profile" element={<RequireLogin><StudentProfile /></RequireLogin>} />
+          <Route path="/checkout" element={<RequireLogin><StudentCheckout /></RequireLogin>} />
         </Routes>
       </div>
     </div>
