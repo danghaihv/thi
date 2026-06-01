@@ -478,6 +478,7 @@ export function StudentProfile() {
    // Checkout Modal States
    const [checkoutPack, setCheckoutPack] = useState<any>(null);
    const [paymentMemo, setPaymentMemo] = useState('');
+   const [paymentIntentId, setPaymentIntentId] = useState('');
    const [isCheckingPayment, setIsCheckingPayment] = useState(false);
    const [checkMessage, setCheckMessage] = useState('');
    const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -620,12 +621,13 @@ export function StudentProfile() {
       setPaymentMemo('');
 
       try {
-         const response = await fetch("/api/payment/create", {
+         const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
+         const response = await fetch("/api/payment/intents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                userId: auth.currentUser.uid,
-               packType,
+               planCode,
             }),
          });
          const data = await response.json();
@@ -642,8 +644,9 @@ export function StudentProfile() {
             days: data.days,
             name: data.label,
          });
+         setPaymentIntentId(data.intentId || '');
          setPaymentMemo(data.memo);
-         setCheckMessage('');
+         setCheckMessage('Đang chờ hệ thống ghi nhận thanh toán...');
       } catch (err: any) {
          console.error("Create payment error:", err);
          setCheckMessage("Lỗi kết nối server: " + err.message);
@@ -659,57 +662,44 @@ export function StudentProfile() {
    };
 
    const verifyPayment = async () => {
-      if (!auth.currentUser || !checkoutPack) return;
+      if (!checkoutPack || !paymentIntentId) return;
       setIsCheckingPayment(true);
-      setCheckMessage('Đang kết nối cổng SePay đối soát giao dịch...');
-      
+
       try {
-         const response = await fetch("/api/payment/verify", {
-            method: "POST",
-            headers: {
-               "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-               userId: auth.currentUser.uid,
-               memo: paymentMemo,
-               amount: checkoutPack.amount,
-               days: checkoutPack.days
-            })
-         });
-
-         const contentType = response.headers.get("content-type") || "";
-         let data: any = null;
-
-         if (contentType.includes("application/json")) {
-            data = await response.json();
-         } else {
-            const rawText = await response.text();
-            const snippet = rawText.slice(0, 200).replace(/\s+/g, ' ').trim();
-            console.error("SePay verify returned non-JSON response", {
-               status: response.status,
-               contentType,
-               snippet
-            });
-            return;
-         }
+         const response = await fetch(`/api/payment/intents/${paymentIntentId}`);
+         const data = await response.json();
 
          if (!response.ok) {
-            setCheckMessage(data?.error || data?.message || "Giao dịch lỗi, vui lòng thử lại sau.");
+            setCheckMessage(data?.error || "Không thể kiểm tra trạng thái thanh toán.");
             return;
          }
 
-         if (data?.success) {
-            setCheckMessage("Đã nhận thanh toán! Tài khoản của bạn đã được nâng cấp VIP thành công 🎉!");
+         const intent = data?.intent;
+         if (!intent) {
+            setCheckMessage("Không tìm thấy thông tin hóa đơn thanh toán.");
+            return;
+         }
+
+         if (intent.status === 'fulfilled') {
+            setCheckMessage('Đã nhận thanh toán! Tài khoản của bạn đã được nâng cấp VIP thành công 🎉!');
             setTimeout(() => {
                setCheckoutPack(null);
+               setPaymentIntentId('');
+               setPaymentMemo('');
                fetchUserAndStats();
-            }, 3000);
-         } else {
-            setCheckMessage(data.message || "Hệ thống chưa tìm thấy giao dịch tương ứng. Nếu bạn vừa chuyển khoản, vui lòng đợi vài giây rồi thử lại.");
+            }, 2500);
+            return;
          }
+
+         if (intent.status === 'expired') {
+            setCheckMessage('Mã thanh toán đã hết hạn. Vui lòng tạo hóa đơn mới để tiếp tục.');
+            return;
+         }
+
+         setCheckMessage('Đang chờ hệ thống ghi nhận thanh toán...');
       } catch (err: any) {
-         console.error("Payment check error:", err);
-         setCheckMessage("Đã có lỗi xảy ra kết nối Server đối soát: " + err.message);
+         console.error('Payment intent check error:', err);
+         setCheckMessage('Đã có lỗi xảy ra khi kiểm tra trạng thái thanh toán: ' + err.message);
       } finally {
          setIsCheckingPayment(false);
       }
@@ -717,12 +707,12 @@ export function StudentProfile() {
 
    // Polling when modal is open
    useEffect(() => {
-      if (!checkoutPack) return;
+      if (!checkoutPack || !paymentIntentId) return;
       const interval = setInterval(() => {
          verifyPayment();
-      }, 7000); // Poll every 7s
+      }, 5000);
       return () => clearInterval(interval);
-   }, [checkoutPack, paymentMemo]);
+   }, [checkoutPack, paymentIntentId]);
 
    if (!user) {
       return <div className="py-20 text-center text-slate-500 animate-pulse">Đang tải thông tin...</div>;
@@ -1063,8 +1053,12 @@ export function StudentProfile() {
                                     Tôi đã chuyển khoản - Kiểm tra ngay
                                  </button>
                                  
-                                 <button 
-                                    onClick={() => setCheckoutPack(null)}
+                                 <button
+                                    onClick={() => {
+                                      setCheckoutPack(null);
+                                      setPaymentIntentId('');
+                                      setPaymentMemo('');
+                                    }}
                                     className="px-5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm py-3 rounded-xl transition-all cursor-pointer"
                                  >
                                     Hủy

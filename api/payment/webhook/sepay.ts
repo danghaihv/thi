@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { applyVipUpgrade, findPendingPaymentByMemo, hasProcessedTx } from "../_shared";
+import { findIntentByMemo, fulfillIntentWithTx, hasProcessedTx } from "../_shared";
 import { getSepayWebhookToken } from "../_shared";
 
 function stableStringify(value: any): string {
@@ -70,37 +70,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const memo = String(payload.content || payload.transaction_content || payload.description || "").trim().toUpperCase();
     const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
     const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || "").trim();
+    const paymentCode = String(payload.code || "").trim().toUpperCase();
 
     if (!memo || !amount || !sepayTxId) {
+      console.error("Webhook missing data:", { memo, amount, sepayTxId });
       return res.status(400).json({ success: false, message: "Webhook thiếu thông tin memo/amount/transaction id." });
+    }
+
+    // Validate payment code: must start with HMATH prefix
+    const codePrefix = process.env.PAYMENT_CODE_PREFIX || "HMATH";
+    if (!paymentCode || !paymentCode.startsWith(codePrefix)) {
+      console.warn(`Invalid payment code. Expected prefix: ${codePrefix}, Got: ${paymentCode}`);
+      return res.status(400).json({ success: false, message: `Mã thanh toán phải bắt đầu với tiền tố ${codePrefix}.` });
     }
 
     const alreadyProcessed = await hasProcessedTx(sepayTxId);
     if (alreadyProcessed) {
+      console.log("Transaction already processed:", sepayTxId);
       return res.status(200).json({ success: true, message: "Transaction đã được xử lý trước đó." });
     }
 
-    const pendingPayment = await findPendingPaymentByMemo(memo);
-    if (!pendingPayment) {
+    const intent = await findIntentByMemo(memo);
+    if (!intent) {
+      console.warn("No payment intent found for memo:", memo);
       return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
     }
 
-    if (!pendingPayment.userId || !pendingPayment.memo || !pendingPayment.amount || !pendingPayment.days) {
+    if (!intent.userId || !intent.memo || !intent.amountExpected || !intent.days) {
       return res.status(404).json({ success: false, message: "Dữ liệu hóa đơn không hợp lệ." });
     }
 
-    if (Number(amount) < Number(pendingPayment.amount || 0)) {
+    if (Number(amount) < Number(intent.amountExpected || 0)) {
+      console.warn(`Amount mismatch. Received: ${amount}, Expected: ${intent.amountExpected}`);
       return res.status(400).json({ success: false, message: "Số tiền nhận được nhỏ hơn hóa đơn yêu cầu." });
     }
 
-    const upgraded = await applyVipUpgrade({
-      userId: String(pendingPayment.userId),
-      memo: String(pendingPayment.memo).toUpperCase(),
-      amount: Number(pendingPayment.amount),
-      days: Number(pendingPayment.days),
-      sepayTxId
+    const upgraded = await fulfillIntentWithTx({
+      intent,
+      sepayTxId,
+      amountReceived: Number(amount),
     });
-
+    console.log(`Successfully upgraded VIP for user ${intent.userId}, expires: ${upgraded.vipExpiry}`);
     return res.status(200).json({
       success: true,
       message: upgraded.alreadyProcessed ? "Hóa đơn đã xử lý trước đó." : "Đã xử lý webhook và nâng cấp VIP thành công.",
