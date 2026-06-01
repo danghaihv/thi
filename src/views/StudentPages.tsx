@@ -623,6 +623,7 @@ export function StudentProfile() {
       setCheckMessage('');
       setCheckoutPack(null);
       setPaymentMemo('');
+      setPaymentIntentId('');
 
       try {
          const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
@@ -638,6 +639,12 @@ export function StudentProfile() {
 
          if (!response.ok) {
             setCheckMessage(data.error || data.message || "Không thể tạo hóa đơn. Vui lòng thử lại.");
+            setIsCheckingPayment(false);
+            return;
+         }
+
+         if (!data.bankId || !data.accountNo) {
+            setCheckMessage('Chưa cấu hình tài khoản nhận tiền. Vui lòng liên hệ admin.');
             setIsCheckingPayment(false);
             return;
          }
