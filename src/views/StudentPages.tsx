@@ -613,7 +613,11 @@ export function StudentProfile() {
    };
 
    const initiateCheckout = async (packType: '1m' | '6m' | '1y') => {
-      if (!auth.currentUser) return;
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+         setCheckMessage('Phiên đăng nhập chưa sẵn sàng. Vui lòng tải lại trang hoặc đăng nhập lại.');
+         return;
+      }
 
       setIsCheckingPayment(true);
       setCheckMessage('');
@@ -626,7 +630,7 @@ export function StudentProfile() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-               userId: auth.currentUser.uid,
+               userId: uid,
                planCode,
             }),
          });
