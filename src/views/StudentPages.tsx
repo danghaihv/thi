@@ -471,7 +471,11 @@ export function StudentHistory() {
 
 export function StudentProfile() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(() => {
+    const saved = localStorage.getItem('hmath_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [profileReady, setProfileReady] = useState(false);
   const [zalo, setZalo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -527,6 +531,8 @@ export function StudentProfile() {
       setMonthlyExamCount(subSnap.size);
     } catch (err) {
       console.error('Error loading profile stats:', err);
+    } finally {
+      setProfileReady(true);
     }
   };
 
@@ -635,7 +641,7 @@ export function StudentProfile() {
     return () => clearInterval(interval);
   }, [checkoutPack, paymentIntentId]);
 
-  if (!user) {
+  if (!profileReady && !user) {
     return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
   }
 
