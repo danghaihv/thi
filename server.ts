@@ -95,6 +95,145 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Middleware: raw body untuk SePay webhook (HMAC verification)
+  // HARUS ở trước express.json() để keep original bytes
+  app.post('/api/webhook/sepay', express.raw({ type: '*/*' }), async (req, res) => {
+    try {
+      const crypto = await import('crypto');
+      const mysql = await import('mysql2/promise');
+      
+      const body = req.body.toString('utf8');
+      if (!body) {
+        return res.status(400).json({ success: false, message: 'Empty body' });
+      }
+
+      // 1. HMAC Verification
+      const signature = String(req.headers['x-sepay-signature'] || '').trim();
+      const timestamp = Number(req.headers['x-sepay-timestamp'] || 0);
+      const secret = process.env.SEPAY_WEBHOOK_SECRET || '';
+
+      if (!signature || !timestamp || !secret) {
+        console.error('Missing headers or secret');
+        return res.status(400).json({ success: false, message: 'Missing headers' });
+      }
+
+      // 2. Chống replay: timestamp max 5 minutes
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (Math.abs(nowSec - timestamp) > 300) {
+        console.warn('Timestamp expired:', timestamp);
+        return res.status(401).json({ success: false, message: 'Request expired' });
+      }
+
+      // 3. Verify HMAC-SHA256
+      const expected = 'sha256=' + crypto.default.createHmac('sha256', secret)
+        .update(`${timestamp}.${body}`)
+        .digest('hex');
+
+      const sig = Buffer.from(signature);
+      const exp = Buffer.from(expected);
+      
+      if (sig.length !== exp.length || !crypto.default.timingSafeEqual(sig, exp)) {
+        console.error('HMAC verification failed');
+        return res.status(401).json({ success: false, message: 'Invalid signature' });
+      }
+
+      // 4. Parse JSON
+      let data: any;
+      try {
+        data = JSON.parse(body);
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr);
+        return res.status(400).json({ success: false, message: 'Invalid JSON' });
+      }
+
+      if (!data?.id) {
+        console.error('Invalid payload: missing id');
+        return res.status(400).json({ success: false, message: 'Invalid payload' });
+      }
+
+      // Validate payment code: must start with HMATH prefix
+      const paymentCode = String(data.content || data.transaction_content || data.description || '').trim().toUpperCase();
+      const codePrefix = process.env.PAYMENT_CODE_PREFIX || 'HMATH';
+      
+      if (!paymentCode) {
+        console.warn('No payment code in transaction content');
+        return res.status(400).json({ success: false, message: 'Giao dịch không chứa mã thanh toán' });
+      }
+
+      if (!paymentCode.startsWith(codePrefix)) {
+        console.warn(`Invalid payment code prefix. Expected: ${codePrefix}, Got: ${paymentCode}`);
+        return res.status(400).json({ success: false, message: `Mã thanh toán phải bắt đầu với ${codePrefix}` });
+      }
+
+      // 5. MySQL: INSERT IGNORE to prevent duplicates
+      const pool = mysql.default.createPool({
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASS || '',
+        database: process.env.DB_NAME || 'sepay_webhook',
+      });
+
+      const conn = await pool.getConnection();
+      try {
+        const [result] = await conn.execute(
+          `INSERT IGNORE INTO transactions 
+           (sepay_id, gateway, transaction_date, account_number, sub_account,
+            code, amount_in, amount_out, accumulated, content, reference_code, body)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            data.id,
+            data.gateway || '',
+            data.transactionDate || new Date(),
+            data.accountNumber || '',
+            data.subAccount || '',
+            paymentCode,
+            data.transferType === 'in' ? (data.transferAmount || 0) : 0,
+            data.transferType === 'out' ? (data.transferAmount || 0) : 0,
+            data.accumulated || 0,
+            paymentCode,
+            data.referenceCode || '',
+            body,
+          ]
+        );
+
+        // Transaction already processed
+        if ((result as any).affectedRows === 0) {
+          console.log('Transaction already processed:', data.id);
+          res.json({ success: true });
+          return;
+        }
+
+        // Business logic: only on first insert - update orders with matching code
+        if (data.transferType === 'in' && paymentCode) {
+          const transferAmount = Number(data.transferAmount || 0);
+          console.log(`Processing transfer: ${paymentCode}, amount: ${transferAmount}`);
+          
+          // UPDATE orders if amount sufficient
+          const [updateResult] = await conn.execute(
+            `UPDATE orders 
+             SET status = 'paid', paid_at = NOW()
+             WHERE code = ? AND status = 'pending' AND amount <= ?`,
+            [paymentCode, transferAmount]
+          );
+
+          if ((updateResult as any).affectedRows > 0) {
+            console.log(`Order ${paymentCode} marked as paid`);
+          }
+        }
+
+        console.log(`SePay webhook processed: ${data.id}`);
+        res.json({ success: true });
+      } finally {
+        conn.release();
+        pool.end();
+      }
+    } catch (err) {
+      console.error('SePay webhook error:', err);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // Standard JSON middleware for other routes
   app.use(express.json());
 
   // API Routes
@@ -173,13 +312,34 @@ async function startServer() {
         return res.status(500).json({ error: "Không thể kết nối cổng SePay. Mã lỗi: " + response.status });
       }
 
-      const rawData: any = await response.json();
-      const transactions = rawData.transactions || [];
+      let rawData: any;
+      try {
+        rawData = await response.json();
+      } catch (parseErr: any) {
+        console.error("Failed to parse SePay response:", parseErr);
+        return res.status(500).json({ error: "Lỗi phân tích dữ liệu từ SePay" });
+      }
+
+      if (rawData.error || rawData.status === 'error') {
+        console.error("SePay API error:", rawData);
+        return res.status(500).json({ error: "Lỗi từ API SePay: " + (rawData.message || rawData.error) });
+      }
+
+      const transactions = Array.isArray(rawData.transactions) ? rawData.transactions : [];
+      if (transactions.length === 0) {
+        console.warn("No transactions found from SePay");
+        return res.json({
+          success: false,
+          message: "Chưa nhận được giao dịch chuyển khoản tương thích. Vui lòng đảm bảo bạn điền đúng nội dung và số tiền, sau đó thử kiểm tra lại."
+        });
+      }
+
       const cleanMemo = String(memo).trim().toUpperCase();
+      const expectedAmount = Number(amount);
       const matchingTx = transactions.find((tx: any) => {
         const txContent = (tx.transaction_content || '').toUpperCase();
         const txAmount = Number(tx.amount_in || 0);
-        return txContent.includes(cleanMemo) && txAmount >= Number(amount);
+        return txContent.includes(cleanMemo) && txAmount >= expectedAmount;
       });
 
       if (!matchingTx) {
@@ -215,49 +375,93 @@ async function startServer() {
       return res.status(500).json({ success: false, message: "Server chưa cấu hình SEPAY_WEBHOOK_TOKEN." });
     }
 
-    const authHeader = String(req.headers.authorization || '');
-    const requestToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : String(req.headers['x-sepay-token'] || '');
-    if (requestToken !== token) {
-      return res.status(401).json({ success: false, message: "Unauthorized webhook token." });
+    // Validate timestamp freshness (within 5 minutes)
+    const ts = Number(req.headers["x-sepay-timestamp"] || 0);
+    if (ts) {
+      const now = Math.floor(Date.now() / 1000);
+      if (Math.abs(now - ts) > 300) {
+        return res.status(401).json({ success: false, message: "Webhook timestamp quá hạn." });
+      }
+    }
+
+    // Validate HMAC signature first, then fallback to legacy token
+    const signature = String(req.headers["x-sepay-signature"] || "").trim();
+    let isValidated = false;
+
+    if (signature && ts) {
+      try {
+        const crypto = require('crypto');
+        function stableStringify(value: any): string {
+          if (value === null || typeof value !== "object") return JSON.stringify(value);
+          if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+          const keys = Object.keys(value).sort();
+          return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
+        }
+        const rawBody = typeof req.body === "object" ? stableStringify(req.body) : String(req.body || "");
+        const expected = "sha256=" + crypto.createHmac("sha256", token).update(`${ts}.${rawBody}`).digest("hex");
+        isValidated = signature === expected;
+      } catch (err) {
+        console.warn("HMAC validation failed:", err);
+      }
+    }
+
+    // Fallback to legacy token validation
+    if (!isValidated) {
+      const authHeader = String(req.headers.authorization || '');
+      const requestToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : String(req.headers['x-sepay-token'] || '');
+      if (requestToken !== token) {
+        return res.status(401).json({ success: false, message: "Unauthorized webhook signature/token." });
+      }
+      isValidated = true;
     }
 
     try {
       const payload: any = req.body || {};
-      const memo = String(payload.content || payload.transaction_content || payload.description || '').trim();
+      const memo = String(payload.content || payload.transaction_content || payload.description || '').trim().toUpperCase();
       const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
-      const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || '');
+      const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || '').trim();
 
       if (!memo || !amount || !sepayTxId) {
+        console.error("Webhook missing data:", { memo, amount, sepayTxId });
         return res.status(400).json({ success: false, message: "Webhook thiếu thông tin memo/amount/transaction id." });
       }
 
-      const memoUpper = memo.toUpperCase();
       const paymentsRef = collection(db, 'payments');
-      const pendingByMemo = await getDocs(query(paymentsRef, where('memo', '==', memoUpper)));
+      
+      // Check if transaction already processed
       const existingByTx = await getDocs(query(paymentsRef, where('sepayTxId', '==', sepayTxId), where('status', '==', 'completed')));
-
       if (!existingByTx.empty) {
+        console.log("Transaction already processed:", sepayTxId);
         return res.json({ success: true, message: "Transaction đã được xử lý trước đó." });
       }
 
+      // Find pending payment by memo
+      const pendingByMemo = await getDocs(query(paymentsRef, where('memo', '==', memo)));
       if (pendingByMemo.empty) {
+        console.warn("No pending payment found for memo:", memo);
         return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
       }
 
       const paymentDoc = pendingByMemo.docs[0];
       const paymentData: any = paymentDoc.data();
 
-      if (Number(amount) < Number(paymentData.amount || 0)) {
+      // Validate amount
+      const expectedAmount = Number(paymentData.amount || 0);
+      if (amount < expectedAmount) {
+        console.warn(`Amount mismatch. Received: ${amount}, Expected: ${expectedAmount}`);
         return res.status(400).json({ success: false, message: "Số tiền nhận được nhỏ hơn hóa đơn yêu cầu." });
       }
 
+      // Apply VIP upgrade
       const upgraded = await applyVipUpgrade({
         userId: paymentData.userId,
         memo: paymentData.memo,
-        amount: Number(paymentData.amount),
+        amount: expectedAmount,
         days: Number(paymentData.days),
         sepayTxId
       });
+
+      console.log(`Successfully upgraded VIP for user ${paymentData.userId}, expires: ${upgraded.vipExpiry}`);
 
       return res.json({
         success: true,

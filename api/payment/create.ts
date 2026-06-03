@@ -54,7 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .toUpperCase()
       .slice(0, 20);
     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const memo = `HM${safeName}${randomCode}`;
+    const codePrefix = process.env.PAYMENT_CODE_PREFIX || "HMATH";
+    const memo = `${codePrefix}${safeName}${randomCode}`;
 
     const { setDoc } = await import("firebase/firestore");
     await setDoc(doc(db, "payments", memo), {
