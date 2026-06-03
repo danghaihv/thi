@@ -479,7 +479,7 @@ export function StudentProfile() {
   const [zalo, setZalo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [monthlyExamCount, setMonthlyExamCount] = useState(0);
+  const [monthlyExamCount, setMonthlyExamCount] = useState(() => Number(localStorage.getItem(`hmath_monthly_exam_count_${auth.currentUser?.uid || 'guest'}`) || '0'));
   const [pricing, setPricing] = useState({ vip1MonthPrice: 50000, vip6MonthPrice: 240000, vip1YearPrice: 450000, sepayBankId: '', sepayAccountNo: '', sepayAccountName: '' });
   const [checkoutPack, setCheckoutPack] = useState<any>(null);
   const [paymentMemo, setPaymentMemo] = useState('');
@@ -526,9 +526,13 @@ export function StudentProfile() {
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
+      const cacheKey = `hmath_monthly_exam_count_${auth.currentUser.uid}`;
+      const cachedCount = Number(localStorage.getItem(cacheKey) || '0');
       const subQ = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid), where('submittedAt', '>=', startOfMonth.toISOString()));
       const subSnap = await getDocs(subQ);
-      setMonthlyExamCount(subSnap.size);
+      const nextCount = Math.max(subSnap.size, cachedCount);
+      localStorage.setItem(cacheKey, String(nextCount));
+      setMonthlyExamCount(nextCount);
     } catch (err) {
       console.error('Error loading profile stats:', err);
     } finally {
@@ -540,19 +544,25 @@ export function StudentProfile() {
     let unsubSubmissions: (() => void) | null = null;
     let unsubAuth: (() => void) | null = null;
 
-    const setupRealtimeCount = async (uid: string) => {
+    const syncSubmissionCount = async (uid: string) => {
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
+      const cacheKey = `hmath_monthly_exam_count_${uid}`;
+      const cachedCount = Number(localStorage.getItem(cacheKey) || '0');
       const subQ = query(collection(db, 'submissions'), where('studentId', '==', uid), where('submittedAt', '>=', startOfMonth.toISOString()));
-      unsubSubmissions = onSnapshot(subQ, (subSnap) => setMonthlyExamCount(subSnap.size), (err) => console.error('Realtime submissions counter error:', err));
+      unsubSubmissions = onSnapshot(subQ, (subSnap) => {
+        const nextCount = Math.max(subSnap.size, cachedCount);
+        localStorage.setItem(cacheKey, String(nextCount));
+        setMonthlyExamCount(nextCount);
+      }, (err) => console.error('Realtime submissions counter error:', err));
     };
 
     fetchUserAndStats();
-    if (auth.currentUser) setupRealtimeCount(auth.currentUser.uid);
+    if (auth.currentUser) syncSubmissionCount(auth.currentUser.uid);
     else {
       unsubAuth = auth.onAuthStateChanged((user) => {
-        if (user) setupRealtimeCount(user.uid);
+        if (user) syncSubmissionCount(user.uid);
       });
     }
 

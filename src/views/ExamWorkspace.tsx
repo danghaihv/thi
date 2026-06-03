@@ -356,6 +356,10 @@ export default function ExamWorkspace() {
         console.warn("Fullscreen exit error:", err);
       }
 
+      const cacheKey = `hmath_monthly_exam_count_${auth.currentUser.uid}`;
+      const nextCount = Number(localStorage.getItem(cacheKey) || '0') + 1;
+      localStorage.setItem(cacheKey, String(nextCount));
+      window.dispatchEvent(new CustomEvent('hmath:submission-updated', { detail: { studentId: auth.currentUser.uid, monthlyExamCount: nextCount } }));
       setResult(submission);
     } catch (e: any) {
       console.error(e);
