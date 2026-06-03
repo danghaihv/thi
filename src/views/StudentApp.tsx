@@ -132,8 +132,16 @@ type ExamSummary = {
   isPublic?: boolean;
 };
 
+const normalizeSubmissionCount = (value: any): number => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 function StudentHome() {
   const [exams, setExams] = useState<ExamSummary[]>([]);
+  const [submissionCounts, setSubmissionCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<number | 'all'>('all');
@@ -163,6 +171,40 @@ function StudentHome() {
     isPublic: data.isPublic,
   });
 
+  const loadSubmissionCounts = async (examIds: string[]) => {
+    if (examIds.length === 0) {
+      setSubmissionCounts({});
+      return;
+    }
+
+    try {
+      const nextCounts = new Map<string, number>();
+      const chunkSize = 10;
+
+      for (let i = 0; i < examIds.length; i += chunkSize) {
+        const chunk = examIds.slice(i, i + chunkSize);
+        const submissionsQuery = query(collection(db, 'submissions'), where('examId', 'in', chunk));
+        const snapshot = await getDocs(submissionsQuery);
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const examId = String(data.examId || '');
+          if (!examId) return;
+          nextCounts.set(examId, (nextCounts.get(examId) || 0) + 1);
+        });
+      }
+
+      setSubmissionCounts(() => {
+        const next: Record<string, number> = {};
+        examIds.forEach((examId) => {
+          next[examId] = nextCounts.get(examId) || 0;
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error('Error loading exam submission counts:', err);
+    }
+  };
+
   const toSortedExamList = (snapshot: any): ExamSummary[] => {
     const nextExams: ExamSummary[] = [];
     snapshot.forEach((doc: any) => {
@@ -189,12 +231,17 @@ function StudentHome() {
       return toSortedExamList(baseSnap);
     };
 
+    const syncSubmissionCounts = async (baseExams: ExamSummary[]) => {
+      await loadSubmissionCounts(baseExams.map((exam) => exam.id));
+    };
+
     const start = async () => {
       try {
         const initialSnap = await getDocs(examsQuery);
         const initialExams = await resolveExamList(initialSnap);
         if (!isMounted) return;
         setExams(initialExams);
+        await syncSubmissionCounts(initialExams);
         setLoading(false);
         setError(null);
       } catch (err: any) {
@@ -210,6 +257,7 @@ function StudentHome() {
             const nextExams = await resolveExamList(examSnap);
             if (!isMounted) return;
             setExams(nextExams);
+            await syncSubmissionCounts(nextExams);
             setError(null);
           } catch (err: any) {
             if (!isMounted) return;
@@ -232,13 +280,18 @@ function StudentHome() {
     };
   }, []);
 
-  const filtered = exams.filter(e => {
-    const matchGrade = filterMode === 'all' || String(e.grade) === String(filterMode);
-    const matchDifficulty = difficultyFilter === 'all' || e.difficulty === difficultyFilter;
-    const matchCategory = categoryFilter === 'all' || e.category === categoryFilter;
-    const matchQuery = (e.title || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchGrade && matchDifficulty && matchCategory && matchQuery;
-  }).slice(0, 15);
+  const filtered = exams
+    .map((e) => ({
+      ...e,
+      submissionCount: submissionCounts[e.id] ?? e.submissionCount,
+    }))
+    .filter(e => {
+      const matchGrade = filterMode === 'all' || String(e.grade) === String(filterMode);
+      const matchDifficulty = difficultyFilter === 'all' || e.difficulty === difficultyFilter;
+      const matchCategory = categoryFilter === 'all' || e.category === categoryFilter;
+      const matchQuery = (e.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+      return matchGrade && matchDifficulty && matchCategory && matchQuery;
+    }).slice(0, 15);
 
   return (
     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
@@ -312,7 +365,7 @@ function StudentHome() {
 }
 
 function ExamCard({ exam }: { exam: any }) {
-  const attemptsCount = exam.submissionCount || 0;
+  const attemptsCount = normalizeSubmissionCount(exam.submissionCount);
 
   return (
     <div className="group bg-white rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-400 p-6 flex flex-col transition-all hover:shadow-lg hover:-translate-y-1 h-full relative">
