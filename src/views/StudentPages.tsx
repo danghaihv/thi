@@ -591,8 +591,6 @@ export function StudentProfile() {
     setPaymentIntentId('');
     setPaymentMemo('');
     setCheckoutPack({ type: packType, amount: 0, days: 0, name: 'Đang tạo hóa đơn...' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    setCheckoutPack(null);
 
     try {
       const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
@@ -826,7 +824,7 @@ export function StudentProfile() {
 
 function PriceCard({ title, period, price, onChoose, cta, ctaHint, featured = false }: { title: string; period: string; price: number; onChoose: () => void; cta: string; ctaHint?: string; featured?: boolean }) {
   return (
-    <div className={`flex flex-col justify-between rounded-[1.5rem] border p-4 text-center shadow-sm transition-all ${featured ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+    <div className={`flex flex-col justify-between rounded-[1.5rem] border p-4 text-center shadow-sm ${featured ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-200 bg-white'}`}>
       <div>
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${featured ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-50 text-indigo-500'}`}>{period}</span>
         <h5 className="mt-2 text-sm font-bold text-slate-950">{title}</h5>
