@@ -26,6 +26,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('hmath_user');
+    localStorage.removeItem('hmath_after_login');
     setUser(null);
     navigate('/login');
   };
@@ -38,7 +39,13 @@ export default function App() {
   }
 
   if (location.pathname === '/login' && user) {
-     navigate(user.role === 'student' ? '/' : '/admin');
+     const savedTarget = localStorage.getItem('hmath_after_login');
+     if (savedTarget && user.role === 'student') {
+       localStorage.removeItem('hmath_after_login');
+       navigate(savedTarget);
+     } else {
+       navigate(user.role === 'student' ? '/' : '/admin');
+     }
   }
 
   return (

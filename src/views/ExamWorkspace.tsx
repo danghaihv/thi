@@ -393,7 +393,7 @@ export default function ExamWorkspace() {
           <h2 className="text-2xl font-black text-slate-800 mb-4">Đạt giới hạn lượt thi!</h2>
           <p className="text-slate-500 text-sm leading-relaxed mb-8 max-w-sm">
             Tài khoản Thường của bạn đã thi tối đa 10 đề trong tháng này.
-            Vui lòng nâng cấp gói thành viên VIP để tiếp tục làm đề thi không giới hạn và mở khóa đầy đủ lời giải chi tiết.
+            Tính năng này chỉ dành cho tài khoản VIP. Hãy nâng cấp để xem đáp án và lời giải chi tiết.
           </p>
           <div className="flex flex-col gap-3 w-full">
             <button
@@ -469,8 +469,9 @@ export default function ExamWorkspace() {
                    if (isVipUser || isStaff) {
                      setShowDetailedResult(true);
                    } else {
-                     window.alert('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP. Bạn sẽ được chuyển đến trang nâng cấp.');
-                     navigate('/profile');
+                     window.alert('Lỗi nhận từ HMath: Tính năng này chỉ dành cho tài khoản VIP.');
+                     localStorage.setItem('hmath_after_login', `${window.location.pathname}${window.location.search}${window.location.hash}`);
+                     navigate('/upgrade');
                    }
                  }}
                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-medium transition-colors shadow-sm"
@@ -1016,18 +1017,19 @@ export default function ExamWorkspace() {
             </div>
             <h3 className="text-xl font-bold text-slate-800 mb-2">Đặc quyền Thành viên VIP</h3>
             <p className="text-slate-500 mb-6 text-sm leading-relaxed">
-              Bạn đang sử dụng tài khoản Miễn phí, do đó không được phép xem đáp án và giải chi tiết của đề thi. Nhận đặc quyền VIP ngay để đột phá kết quả học tập!
+              Tài khoản này chưa có VIP nên chưa thể xem đáp án và lời giải chi tiết. Hãy nâng cấp để mở khóa tính năng này.
             </p>
             <div className="flex flex-col gap-2 w-full">
               <button
                 onClick={() => {
+                  localStorage.setItem('hmath_after_login', `${window.location.pathname}${window.location.search}${window.location.hash}`);
                   setShowVipModalToViewSolution(false);
-                  navigate('/profile');
+                  navigate('/upgrade');
                 }}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm py-3.5 rounded-xl transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Sparkles className="w-4 h-4 fill-white animate-pulse" />
-                Nâng cấp VIP nhận trọn giải chi tiết
+                Nâng cấp để xem đáp án
               </button>
               <button
                 onClick={() => setShowVipModalToViewSolution(false)}

@@ -1,12 +1,195 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User } from 'lucide-react';
+import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User, Sparkles, CreditCard, Clock3, ArrowRight } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile } from './StudentPages';
 import { StudentCheckout } from './StudentCheckoutPage.tmp';
-import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { getCategoryBadgeStyle } from '../components/ExamManager';
+
+function formatMoney(value: number) {
+  return value.toLocaleString('vi-VN');
+}
+
+function UpgradeHub() {
+  const location = useLocation();
+  const [user, setUser] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pricing, setPricing] = useState({ vip1MonthPrice: 50000, vip6MonthPrice: 240000, vip1YearPrice: 450000 });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let unsubAuth: (() => void) | null = null;
+    let unsubHistory: (() => void) | null = null;
+    let mounted = true;
+
+    const saveReturnPath = () => {
+      localStorage.setItem('hmath_after_login', `${window.location.pathname}${window.location.search}${window.location.hash}`);
+    };
+
+    const load = async (uid: string) => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (!mounted) return;
+        setUser(userDoc.exists() ? userDoc.data() : null);
+
+        const settingsDoc = await getDoc(doc(db, 'settings', 'global'));
+        if (!mounted) return;
+        const settingsData = settingsDoc.exists() ? (settingsDoc.data() as any) : null;
+        if (settingsData) {
+          setPricing({
+            vip1MonthPrice: settingsData.vip1MonthPrice ?? 50000,
+            vip6MonthPrice: settingsData.vip6MonthPrice ?? 240000,
+            vip1YearPrice: settingsData.vip1YearPrice ?? 450000,
+          });
+        }
+
+        unsubHistory = onSnapshot(
+          query(collection(db, 'payment_intents'), where('userId', '==', uid)),
+          (snap) => {
+            const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            rows.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            if (!mounted) return;
+            setHistory(rows);
+            setLoading(false);
+          },
+          () => {
+            if (!mounted) return;
+            setLoading(false);
+          }
+        );
+      } catch {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    };
+
+    unsubAuth = auth.onAuthStateChanged((firebaseUser) => {
+      if (!mounted) return;
+      if (!firebaseUser) {
+        setLoading(false);
+        return;
+      }
+      load(firebaseUser.uid);
+    });
+
+    return () => {
+      mounted = false;
+      if (unsubAuth) unsubAuth();
+      if (unsubHistory) unsubHistory();
+    };
+  }, []);
+
+  const isVip = user?.vipExpiry && new Date(user.vipExpiry).getTime() > Date.now();
+  const daysRemaining = isVip ? Math.ceil((new Date(user.vipExpiry).getTime() - Date.now()) / (24 * 60 * 60 * 1000)) : 0;
+
+  const goCheckout = (plan: 'vip_1m' | 'vip_6m' | 'vip_1y') => navigate(`/checkout?plan=${plan}`);
+
+  if (loading) {
+    return <div className="py-20 text-center text-slate-500 animate-pulse">Đang tải thông tin nâng cấp...</div>;
+  }
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-300">
+      <section className="rounded-[2rem] bg-gradient-to-br from-indigo-700 to-slate-900 p-6 text-white shadow-xl md:p-8">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
+          <Sparkles className="h-3.5 w-3.5" /> Nâng cấp tài khoản
+        </div>
+        <h2 className="mt-4 text-3xl font-extrabold tracking-tight md:text-5xl">Mở khóa VIP để học không giới hạn</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100 md:text-base">Trang này gom gói nâng cấp, trạng thái VIP hiện tại và toàn bộ lịch sử thanh toán của bạn ở cùng một chỗ.</p>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-950">Trạng thái tài khoản</h3>
+              <p className="mt-2 text-sm text-slate-500">{isVip ? `VIP còn ${daysRemaining} ngày.` : 'Bạn đang dùng tài khoản miễn phí.'}</p>
+            </div>
+            <div className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${isVip ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{isVip ? 'VIP' : 'Free'}</div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <UpgradePriceCard title="Gói 1 tháng" period="30 ngày" price={pricing.vip1MonthPrice} onChoose={() => goCheckout('vip_1m')} cta="Chọn gói" />
+            <UpgradePriceCard title="Gói 6 tháng" period="180 ngày" price={pricing.vip6MonthPrice} onChoose={() => goCheckout('vip_6m')} cta="Chọn gói" featured />
+            <UpgradePriceCard title="Gói 1 năm" period="365 ngày" price={pricing.vip1YearPrice} onChoose={() => goCheckout('vip_1y')} cta="Chọn gói" />
+          </div>
+
+          <div className="mt-8 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-slate-950">Đi tới thanh toán</h4>
+                <p className="mt-1 text-sm text-slate-500">Tạo mã thanh toán tự động rồi quay lại xem trạng thái đối soát.</p>
+              </div>
+              <button onClick={() => goCheckout('vip_1m')} className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700">
+                Đi tới thanh toán <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            {localStorage.getItem('hmath_after_login') && (
+              <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-700">
+                Bạn đã được dẫn tới đây từ một bài thi hoặc lịch sử xem đáp án. Bấm "Quay lại" để trở về đúng nơi đang dở.
+                <button onClick={() => navigate(localStorage.getItem('hmath_after_login') || '/')} className="ml-2 font-bold underline underline-offset-4">Quay lại</button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <aside className="space-y-6">
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><Clock3 className="h-5 w-5 text-indigo-600" /> Lịch sử nâng cấp</h3>
+            <div className="mt-4 space-y-3">
+              {history.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Chưa có lịch sử nâng cấp nào.</div>
+              ) : history.map((row: any) => (
+                <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900">{row.planCode || 'VIP'}</div>
+                      <div className="mt-1 text-xs text-slate-500">{row.memo || row.intentId || row.id}</div>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${row.status === 'fulfilled' ? 'bg-emerald-100 text-emerald-700' : row.status === 'expired' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{row.status || 'pending'}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                    <div>Số tiền: <b className="text-slate-900">{formatMoney(Number(row.amountExpected || row.amountReceived || 0))} đ</b></div>
+                    <div>Gói: <b className="text-slate-900">{Number(row.days || 0)} ngày</b></div>
+                    <div className="col-span-2">Tạo lúc: <b className="text-slate-900">{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : '-'}</b></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function UpgradePriceCard({ title, period, price, onChoose, cta, featured = false }: { title: string; period: string; price: number; onChoose: () => void; cta: string; featured?: boolean }) {
+  return (
+    <div className={`rounded-[1.5rem] border p-4 ${featured ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-200 bg-white'}`}>
+      <div className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${featured ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-50 text-indigo-500'}`}>{period}</div>
+      <h5 className="mt-2 text-sm font-bold text-slate-950">{title}</h5>
+      <p className="mt-3 text-lg font-extrabold text-indigo-600">{price.toLocaleString('vi-VN')}đ</p>
+      <button onClick={onChoose} type="button" className={`mt-4 w-full rounded-2xl px-4 py-2 text-xs font-bold transition-all ${featured ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-950 text-white hover:-translate-y-0.5'}`}>
+        {cta}
+      </button>
+    </div>
+  );
+}
+
+function FieldRow({ label, value, onCopy, copyValue, copied, highlight = false, mono = false, badge = false }: { label: string; value: string; onCopy?: () => void; copyValue?: string; copied?: boolean; highlight?: boolean; mono?: boolean; badge?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 py-2.5 last:border-b-0 last:pb-0">
+      <span className="text-sm font-medium text-slate-500">{label}</span>
+      <div className="flex items-center gap-2 text-right">
+        <span className={`text-sm font-bold ${highlight ? 'text-indigo-600' : 'text-slate-900'} ${mono ? 'font-mono' : ''} ${badge ? 'rounded-md bg-amber-100 px-2 py-1 text-xs tracking-wide text-amber-800' : ''}`}>{value}</span>
+        {onCopy && copyValue ? <button onClick={onCopy} className="rounded-lg border border-slate-200 bg-white p-1.5 text-indigo-600 transition hover:bg-slate-50" title="Sao chép">{copied ? 'Đã chép' : <CreditCard className="h-3.5 w-3.5" />}</button> : null}
+      </div>
+    </div>
+  );
+}
 
 function RequireLogin({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -26,6 +209,7 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem('hmath_user');
     if (!saved) {
+      saveReturnPath();
       navigate('/login');
       setLoading(false);
       return;
@@ -43,7 +227,9 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
         const isExamPage = currentPath.includes('/exam/');
         if (!isExamPage && !localStorage.getItem('hmath_user')) {
           localStorage.removeItem('hmath_user');
-          navigate('/login');
+          saveReturnPath();
+          saveReturnPath();
+      navigate('/login');
           setLoading(false);
         }
       }
@@ -100,6 +286,9 @@ function StudentLayout() {
          <Link to="/history" className={getLinkClass('/history')}>
            <History className="w-5 h-5" /> Lịch sử làm bài
          </Link>
+         <Link to="/upgrade" className={getLinkClass('/upgrade')}>
+           <Sparkles className="w-5 h-5" /> Nâng cấp tài khoản
+         </Link>
          <Link to="/profile" className={getLinkClass('/profile')}>
            <User className="w-5 h-5" /> Tài khoản / Cá nhân
          </Link>
@@ -110,6 +299,7 @@ function StudentLayout() {
           <Route path="/" element={<StudentHome />} />
           <Route path="/dashboard" element={<RequireLogin><StudentDashboard /></RequireLogin>} />
           <Route path="/history" element={<RequireLogin><StudentHistory /></RequireLogin>} />
+          <Route path="/upgrade" element={<RequireLogin><UpgradeHub /></RequireLogin>} />
           <Route path="/profile" element={<RequireLogin><StudentProfile /></RequireLogin>} />
           <Route path="/checkout" element={<RequireLogin><StudentCheckout /></RequireLogin>} />
         </Routes>

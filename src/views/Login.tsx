@@ -51,9 +51,18 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
         console.warn('Firestore sync failed (non-blocking):', firestoreErr);
       }
       
-      // Auto-navigate to dashboard after successful login
+      const savedTarget = localStorage.getItem('hmath_after_login');
+      if (savedTarget) {
+        localStorage.removeItem('hmath_after_login');
+      }
+
+      // Auto-navigate to the original destination after successful login
       setTimeout(() => {
-        navigate(initialUserData.role === 'student' ? '/' : '/admin');
+        if (savedTarget && initialUserData.role === 'student') {
+          navigate(savedTarget);
+        } else {
+          navigate(initialUserData.role === 'student' ? '/' : '/admin');
+        }
       }, 100);
     } catch (err: any) {
       console.error('Login error:', err);

@@ -360,7 +360,7 @@ export function StudentHistory() {
           </div>
           <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
             <div className="flex items-center gap-2 font-semibold text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Quyền xem chi tiết</div>
-            <p className="mt-2 leading-6">{canViewDetail ? 'Đã mở xem đáp án và lời giải.' : 'Nâng VIP để xem đáp án, lời giải và phân tích chi tiết.'}</p>
+            <p className="mt-2 leading-6">{canViewDetail ? 'Đã mở xem đáp án và lời giải.' : 'Tài khoản này chưa có VIP nên chưa thể xem đáp án, lời giải và phân tích chi tiết.'}</p>
           </div>
         </div>
       </section>
@@ -399,13 +399,14 @@ export function StudentHistory() {
                             if (canViewDetail) {
                               setSelectedSubmission(row);
                             } else {
-                              window.alert('Tính năng xem đáp án chi tiết chỉ dành cho tài khoản VIP. Bạn sẽ được chuyển đến trang nâng cấp.');
-                              window.location.hash = '#/profile';
+                              window.alert('Lỗi nhận từ HMath: Tính năng này chỉ dành cho tài khoản VIP.');
+                              localStorage.setItem('hmath_after_login', `${window.location.pathname}${window.location.search}${window.location.hash}`);
+                              navigate('/upgrade');
                             }
                           }}
                           className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                         >
-                          <Eye className="h-4 w-4" /> {canViewDetail ? 'Xem chi tiết' : 'Nâng VIP để xem'}
+                          <Eye className="h-4 w-4" /> {canViewDetail ? 'Xem chi tiết' : 'Nâng cấp để xem đáp án'}
                         </button>
                       )}
                     </td>
@@ -794,7 +795,7 @@ export function StudentProfile() {
                   <div className="mt-4">
                     <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><span>Lượt thi tháng này</span><span>{monthlyExamCount} / 10</span></div>
                     <div className="h-2.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full transition-all ${monthlyExamCount >= 10 ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(100, (monthlyExamCount / 10) * 100)}%` }} /></div>
-                    {monthlyExamCount >= 10 ? <p className="mt-2 text-xs font-bold text-rose-600">Bạn đã đạt giới hạn đề tháng này. Hãy nâng cấp VIP để thi tiếp.</p> : null}
+                    {monthlyExamCount >= 10 ? <p className="mt-2 text-xs font-bold text-rose-600">Bạn đã đạt giới hạn đề tháng này. Hãy nâng cấp để thi tiếp.</p> : null}
                   </div>
                 </div>
               </div>
@@ -803,7 +804,7 @@ export function StudentProfile() {
 
           <div className="mt-6">
             <div className="text-center">
-              <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">Các gói nâng cấp VIP</h4>
+              <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">Các gói nâng cấp</h4>
               <p className="mt-1 text-xs text-slate-500">Mở khóa đầy đủ nội dung và tăng giới hạn luyện tập.</p>
             </div>
 
