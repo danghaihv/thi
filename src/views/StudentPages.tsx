@@ -237,42 +237,70 @@ export function StudentHistory() {
   const [examTitleMap, setExamTitleMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const load = async () => {
-      if (!auth.currentUser) return;
+    let unsubSubmissions: (() => void) | null = null;
+    let unsubAuth: (() => void) | null = null;
+    let mounted = true;
+
+    const loadHistory = async (uid: string) => {
       try {
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (!mounted) return;
         if (userDoc.exists()) setCurrentUser(userDoc.data());
 
-        const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
-        const snapshot = await getDocs(q);
-        const list: any[] = [];
-        const examIds = new Set<string>();
-
-        snapshot.forEach((snapshotDoc) => {
-          const row = { id: snapshotDoc.id, ...snapshotDoc.data() } as any;
-          list.push(row);
-          if (row.examId) examIds.add(String(row.examId));
-        });
-
-        list.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
-        setSubmissions(list);
-
-        const nextTitleMap: Record<string, string> = {};
-        await Promise.all(Array.from(examIds).map(async (examId) => {
+        const q = query(collection(db, 'submissions'), where('studentId', '==', uid));
+        unsubSubmissions = onSnapshot(q, async (snapshot) => {
           try {
-            const examDoc = await getDoc(doc(db, 'exams', examId));
-            nextTitleMap[examId] = examDoc.exists() ? ((examDoc.data() as any)?.title || examId) : examId;
-          } catch {
-            nextTitleMap[examId] = examId;
+            const list: any[] = [];
+            const examIds = new Set<string>();
+
+            snapshot.forEach((snapshotDoc) => {
+              const row = { id: snapshotDoc.id, ...snapshotDoc.data() } as any;
+              list.push(row);
+              if (row.examId) examIds.add(String(row.examId));
+            });
+
+            list.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
+            if (!mounted) return;
+            setSubmissions(list);
+
+            const nextTitleMap: Record<string, string> = {};
+            await Promise.all(Array.from(examIds).map(async (examId) => {
+              try {
+                const examDoc = await getDoc(doc(db, 'exams', examId));
+                nextTitleMap[examId] = examDoc.exists() ? ((examDoc.data() as any)?.title || examId) : examId;
+              } catch {
+                nextTitleMap[examId] = examId;
+              }
+            }));
+            if (!mounted) return;
+            setExamTitleMap(nextTitleMap);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.LIST, 'submissions');
           }
-        }));
-        setExamTitleMap(nextTitleMap);
+        }, (err) => {
+          handleFirestoreError(err, OperationType.LIST, 'submissions');
+        });
       } catch (err) {
         handleFirestoreError(err, OperationType.LIST, 'submissions');
       }
     };
 
-    load();
+    unsubAuth = auth.onAuthStateChanged((user) => {
+      if (!mounted) return;
+      if (!user) {
+        setCurrentUser(null);
+        setSubmissions([]);
+        setExamTitleMap({});
+        return;
+      }
+      loadHistory(user.uid);
+    });
+
+    return () => {
+      mounted = false;
+      if (unsubSubmissions) unsubSubmissions();
+      if (unsubAuth) unsubAuth();
+    };
   }, []);
 
   useEffect(() => {
