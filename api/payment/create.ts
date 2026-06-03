@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { doc, getDoc } from "firebase/firestore";
 import { getDb } from "./_shared.js";
 
 const PACK_CONFIG: Record<string, { days: number; label: string }> = {
@@ -25,9 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getDb();
-    const settingsRef = doc(db, "settings", "global");
-    const settingsSnap = await getDoc(settingsRef);
-    if (!settingsSnap.exists()) {
+    const settingsSnap = await db.collection("settings").doc("global").get();
+    if (!settingsSnap.exists) {
       return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
     }
     const settingsData: any = settingsSnap.data();
@@ -42,9 +40,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? Number(settingsData.vip6MonthPrice || 240000)
       : Number(settingsData.vip1YearPrice || 450000);
 
-    const userRef = doc(db, "users", userId);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
+    const userSnap = await db.collection("users").doc(userId).get();
+    if (!userSnap.exists) {
       return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh." });
     }
 
@@ -57,8 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const codePrefix = process.env.PAYMENT_CODE_PREFIX || "HMATH";
     const memo = `${codePrefix}${safeName}${randomCode}`;
 
-    const { setDoc } = await import("firebase/firestore");
-    await setDoc(doc(db, "payments", memo), {
+    await db.collection("payments").doc(memo).set({
       userId,
       userEmail: userData.email || "",
       userName: userData.name || userData.fullName || "",

@@ -1,14 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { doc, getDoc } from "firebase/firestore";
 import { getDb } from "./_shared.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getDb();
-    const settingsRef = doc(db, "settings", "global");
-    const settingsSnap = await getDoc(settingsRef);
+    const settingsSnap = await db.collection("settings").doc("global").get();
 
-    if (!settingsSnap.exists()) {
+    if (!settingsSnap.exists) {
       return res.json({
         vip1MonthPrice: 50000,
         vip6MonthPrice: 240000,
