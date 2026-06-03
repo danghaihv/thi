@@ -558,7 +558,16 @@ export function StudentProfile() {
       }, (err) => console.error('Realtime submissions counter error:', err));
     };
 
+    const handleSubmissionUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ studentId?: string; monthlyExamCount?: number }>).detail;
+      if (!auth.currentUser || detail?.studentId !== auth.currentUser.uid || typeof detail.monthlyExamCount !== 'number') return;
+      const cacheKey = `hmath_monthly_exam_count_${auth.currentUser.uid}`;
+      localStorage.setItem(cacheKey, String(detail.monthlyExamCount));
+      setMonthlyExamCount(detail.monthlyExamCount);
+    };
+
     fetchUserAndStats();
+    window.addEventListener('hmath:submission-updated', handleSubmissionUpdated as EventListener);
     if (auth.currentUser) syncSubmissionCount(auth.currentUser.uid);
     else {
       unsubAuth = auth.onAuthStateChanged((user) => {
@@ -567,6 +576,7 @@ export function StudentProfile() {
     }
 
     return () => {
+      window.removeEventListener('hmath:submission-updated', handleSubmissionUpdated as EventListener);
       if (unsubSubmissions) unsubSubmissions();
       if (unsubAuth) unsubAuth();
     };
