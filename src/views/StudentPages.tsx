@@ -66,36 +66,52 @@ export function StudentDashboard() {
   const [timeWindowDays, setTimeWindowDays] = useState<7 | 30>(7);
 
   useEffect(() => {
-    const load = async () => {
-      if (!auth.currentUser) {
-        const unsub = auth.onAuthStateChanged((user) => {
-          if (user) loadHistory(user.uid);
-        });
-        return () => unsub();
-      }
-      loadHistory(auth.currentUser.uid);
-    };
+    let unsubAuth: (() => void) | null = null;
+    let unsubHistory: (() => void) | null = null;
+    let mounted = true;
 
     const loadHistory = async (uid: string) => {
       try {
         setError(null);
         setIsLoading(true);
-        const q = query(collection(db, 'submissions'), where('studentId', '==', uid));
-        const snapshot = await getDocs(q);
-        const list: any[] = [];
-        snapshot.forEach((snapshotDoc) => list.push({ id: snapshotDoc.id, ...snapshotDoc.data() }));
-        list.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
-        setHistory(list);
+
+        unsubHistory = onSnapshot(
+          query(collection(db, 'submissions'), where('studentId', '==', uid)),
+          (snapshot) => {
+            const list: any[] = [];
+            snapshot.forEach((snapshotDoc) => list.push({ id: snapshotDoc.id, ...snapshotDoc.data() }));
+            list.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
+            if (!mounted) return;
+            setHistory(list);
+            setIsLoading(false);
+          },
+          (err: any) => {
+            if (!mounted) return;
+            setError(err?.message || 'Không thể tải dữ liệu');
+            setIsLoading(false);
+          }
+        );
       } catch (err: any) {
+        if (!mounted) return;
         setError(err?.message || 'Không thể tải dữ liệu');
-      } finally {
         setIsLoading(false);
       }
     };
 
-    const unsubscribePromise = load();
+    unsubAuth = auth.onAuthStateChanged((user) => {
+      if (!mounted) return;
+      if (!user) {
+        setHistory([]);
+        setIsLoading(false);
+        return;
+      }
+      loadHistory(user.uid);
+    });
+
     return () => {
-      void unsubscribePromise;
+      mounted = false;
+      if (unsubHistory) unsubHistory();
+      if (unsubAuth) unsubAuth();
     };
   }, []);
 
