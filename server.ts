@@ -323,6 +323,22 @@ async function startServer() {
       const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const memo = `HM${userName}${randomCode}`;
 
+      await setDoc(doc(db, 'payment_intents', memo), {
+        intentId: memo,
+        userId,
+        userEmail: userData.email || '',
+        userName: userData.name || userData.fullName || '',
+        amountExpected: amount,
+        days: pack.days,
+        planCode: effectivePackType === '1m' ? 'vip_1m' : effectivePackType === '6m' ? 'vip_6m' : 'vip_1y',
+        label: pack.label,
+        memo,
+        status: 'awaiting_payment',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }, { merge: true });
+
       await setDoc(doc(db, 'payments', memo), {
         userId,
         userEmail: userData.email || '',
