@@ -5,7 +5,7 @@ import {
   fulfillIntentWithTx,
   getSepayWebhookToken,
   hasProcessedTx,
-} from "../payment/_shared";
+} from "../payment/_shared.js";
 
 function verifyApiKey(req: VercelRequest, secret: string): boolean {
   const authHeader = String(req.headers.authorization || "").trim();

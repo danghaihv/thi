@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { doc, getDoc } from "firebase/firestore";
-import { findIntentByMemo, fulfillIntentWithTx } from "./_shared";
-import { getDb } from "./_shared";
+import { findIntentByMemo, fulfillIntentWithTx } from "./_shared.js";
+import { getDb } from "./_shared.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {

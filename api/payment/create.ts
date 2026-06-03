@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { doc, getDoc } from "firebase/firestore";
-import { getDb } from "./_shared";
+import { getDb } from "./_shared.js";
 
 const PACK_CONFIG: Record<string, { days: number; label: string }> = {
   "1m": { days: 30, label: "VIP 1 tháng" },
