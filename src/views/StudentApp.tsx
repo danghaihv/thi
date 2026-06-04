@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { BookOpen, LayoutDashboard, History, User, Sparkles } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile, StudentUpgradeHub } from './StudentPages';
@@ -59,7 +59,11 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
     return <div className="glass-panel mx-auto flex max-w-md flex-col items-center justify-center rounded-[2rem] px-6 py-16 text-center"><div className="h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" /><p className="mt-4 text-sm font-medium text-slate-500">Đang đồng bộ phiên đăng nhập...</p></div>;
   }
 
-  return user ? children : null;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
 }
 
 export default function StudentApp() {
