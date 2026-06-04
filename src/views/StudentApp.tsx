@@ -169,10 +169,21 @@ function StudentHome() {
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(auth.currentUser));
   const [filterMode, setFilterMode] = useState<number | 'all'>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'Cơ bản' | 'Trung bình' | 'Nâng cao'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+      setIsAuthenticated(Boolean(firebaseUser));
+      setAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const parseCreatedAtMs = (value: any): number => {
     if (!value) return 0;
@@ -209,23 +220,27 @@ function StudentHome() {
     let unsub: (() => void) | null = null;
     let isMounted = true;
 
+    if (!authReady) {
+      setLoading(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     setLoading(true);
     setError(null);
 
     const examsRef = collection(db, 'exams');
-    const userStr = localStorage.getItem('hmath_user');
-    const currentUser = userStr ? JSON.parse(userStr) : null;
-    const isAuthenticated = Boolean(currentUser?.uid || currentUser?.email || currentUser?.role);
-    const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
-    const examsQuery = isAuthenticated ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
+    const publicQuery = query(examsRef, where('isPublic', '==', true));
+    const examsQuery = isAuthenticated ? query(examsRef) : publicQuery;
 
     const resolveExamList = async (baseSnap: any) => {
       return toSortedExamList(baseSnap);
     };
 
-    const start = async () => {
+    const subscribeTo = async (activeQuery: any) => {
       try {
-        const initialSnap = await getDocs(examsQuery);
+        const initialSnap = await getDocs(activeQuery);
         const initialExams = await resolveExamList(initialSnap);
         if (!isMounted) return;
         setExams(initialExams);
@@ -233,12 +248,31 @@ function StudentHome() {
         setError(null);
       } catch (err: any) {
         if (!isMounted) return;
-        setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
-        setLoading(false);
+
+        if (isAuthenticated) {
+          try {
+            const fallbackSnap = await getDocs(publicQuery);
+            const fallbackExams = await resolveExamList(fallbackSnap);
+            if (!isMounted) return;
+            setExams(fallbackExams);
+            setError(null);
+            setLoading(false);
+            activeQuery = publicQuery;
+          } catch (fallbackErr: any) {
+            if (!isMounted) return;
+            setError(`Lỗi tải đề thi: ${fallbackErr?.message || String(fallbackErr)}`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
+          setLoading(false);
+          return;
+        }
       }
 
       unsub = onSnapshot(
-        examsQuery,
+        activeQuery,
         async (examSnap) => {
           try {
             const nextExams = await resolveExamList(examSnap);
@@ -250,21 +284,37 @@ function StudentHome() {
             setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
           }
         },
-        (err) => {
+        async (err) => {
           if (!isMounted) return;
           console.error('Error subscribing to exams:', err);
+
+          if (isAuthenticated && activeQuery !== publicQuery) {
+            try {
+              if (unsub) {
+                unsub();
+                unsub = null;
+              }
+              await subscribeTo(publicQuery);
+              return;
+            } catch (fallbackErr: any) {
+              if (!isMounted) return;
+              setError(`Lỗi tải đề thi: ${fallbackErr?.message || String(fallbackErr)}`);
+              return;
+            }
+          }
+
           setError(`Lỗi tải đề thi: ${err?.message || String(err)}`);
         }
       );
     };
 
-    start();
+    subscribeTo(examsQuery);
 
     return () => {
       isMounted = false;
       if (unsub) unsub();
     };
-  }, []);
+  }, [authReady, isAuthenticated]);
 
   const filtered = exams.filter((e) => {
     const matchGrade = filterMode === 'all' || String(e.grade) === String(filterMode);
