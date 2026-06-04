@@ -62,13 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       planCode: originalPackType === "1m" ? "vip_1m" : originalPackType === "6m" ? "vip_6m" : "vip_1y",
       amountExpected: amount,
       days: pack.days,
-      packType: originalPackType,
-      label: pack.label,
-      memo,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      sepayTxId: "",
-    }, { merge: true });
+    });
 
     return res.json({
       success: true,

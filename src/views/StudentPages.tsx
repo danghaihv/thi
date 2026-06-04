@@ -230,6 +230,7 @@ export function StudentDashboard() {
 }
 
 export function StudentHistory() {
+  const navigate = useNavigate();
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
   const [loadedExam, setLoadedExam] = useState<any | null>(null);

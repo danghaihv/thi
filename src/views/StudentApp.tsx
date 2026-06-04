@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User, Sparkles } from 'lucide-react';
+import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, User, Sparkles } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile, StudentUpgradeHub } from './StudentPages';
 import { StudentCheckout } from './StudentCheckoutPage.tmp';
@@ -100,7 +100,7 @@ function StudentLayout() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className={user ? 'grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]' : 'space-y-6'}>
       {user ? (
         <aside className="glass-panel rounded-[2rem] p-4 lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:self-start">
           <div className="rounded-[1.5rem] bg-gradient-to-br from-indigo-600 via-slate-900 to-slate-950 px-5 py-5 text-white shadow-xl shadow-slate-950/10">
@@ -215,8 +215,9 @@ function StudentHome() {
     const examsRef = collection(db, 'exams');
     const userStr = localStorage.getItem('hmath_user');
     const currentUser = userStr ? JSON.parse(userStr) : null;
+    const isAuthenticated = Boolean(currentUser?.uid || currentUser?.email || currentUser?.role);
     const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
-    const examsQuery = isPrivileged ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
+    const examsQuery = isAuthenticated ? query(examsRef) : query(examsRef, where('isPublic', '==', true));
 
     const resolveExamList = async (baseSnap: any) => {
       return toSortedExamList(baseSnap);
@@ -345,15 +346,9 @@ function StudentHome() {
 }
 
 function ExamCard({ exam }: { exam: any }) {
-  const attemptsCount = exam.submissionCount || 0;
-
   return (
     <div className="group bg-white rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-400 p-6 flex flex-col transition-all hover:shadow-lg hover:-translate-y-1 h-full relative">
-      <div className="absolute top-4 right-4 bg-indigo-50 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full border border-indigo-100 flex items-center gap-1">
-        <Users className="w-3.5 h-3.5" />
-        {attemptsCount} lượt thi
-      </div>
-      <div className="flex-1 mt-6">
+      <div className="flex-1">
         <div className="flex items-start justify-between mb-5">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
             <BookOpen className="w-6 h-6" />
