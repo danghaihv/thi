@@ -46,7 +46,11 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
       }
 
       setTimeout(() => {
-        navigate(initialUserData.role === 'student' ? '/' : '/admin');
+        if (savedTarget && initialUserData.role === 'student') {
+          navigate(savedTarget);
+        } else {
+          navigate(initialUserData.role === 'student' ? '/' : '/admin');
+        }
       }, 100);
     } catch (err: any) {
       console.error('Login error:', err);

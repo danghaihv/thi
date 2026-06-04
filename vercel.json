@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/webhook/sepay",
+      "destination": "/api/webhook/sepay"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

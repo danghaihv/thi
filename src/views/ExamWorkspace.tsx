@@ -356,6 +356,10 @@ export default function ExamWorkspace() {
         console.warn("Fullscreen exit error:", err);
       }
 
+      const cacheKey = `hmath_monthly_exam_count_${auth.currentUser.uid}`;
+      const nextCount = Number(localStorage.getItem(cacheKey) || '0') + 1;
+      localStorage.setItem(cacheKey, String(nextCount));
+      window.dispatchEvent(new CustomEvent('hmath:submission-updated', { detail: { studentId: auth.currentUser.uid, monthlyExamCount: nextCount } }));
       setResult(submission);
     } catch (e: any) {
       console.error(e);
@@ -389,7 +393,7 @@ export default function ExamWorkspace() {
           <h2 className="text-2xl font-black text-slate-800 mb-4">Đạt giới hạn lượt thi!</h2>
           <p className="text-slate-500 text-sm leading-relaxed mb-8 max-w-sm">
             Tài khoản Thường của bạn đã thi tối đa 10 đề trong tháng này.
-            Vui lòng nâng cấp gói thành viên VIP để tiếp tục làm đề thi không giới hạn và mở khóa đầy đủ lời giải chi tiết.
+            Tính năng này chỉ dành cho tài khoản VIP. Hãy nâng cấp để xem đáp án và lời giải chi tiết.
           </p>
           <div className="flex flex-col gap-3 w-full">
             <button

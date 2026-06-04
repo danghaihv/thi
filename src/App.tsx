@@ -37,6 +37,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('hmath_user');
+    localStorage.removeItem('hmath_after_login');
     setUser(null);
     navigate('/login');
   };

@@ -53,7 +53,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, message: "Transaction đã được xử lý trước đó." });
     }
 
-    const intent = await findIntentByMemo(memo);
+    let intent = await findIntentByMemo(memo);
+    if (!intent) {
+      const db = await import("../payment/_shared.js");
+      const legacySnap = await db.getDb().collection("payments").where("memo", "==", memo).limit(1).get();
+      if (!legacySnap.empty) {
+        intent = { id: legacySnap.docs[0].id, ...(legacySnap.docs[0].data() as any) };
+      }
+    }
+
     if (!intent) {
       return res.status(404).json({ success: false, message: "Không tìm thấy hóa đơn chờ xử lý theo memo." });
     }
@@ -63,7 +71,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!intent.userId || !intent.memo || !intent.amountExpected || !intent.days) {
-      return res.status(404).json({ success: false, message: "Dữ liệu hóa đơn không hợp lệ." });
+      const amountExpected = Number(intent.amountExpected || intent.amount || 0);
+      const days = Number(intent.days || (intent.packType === "1m" ? 30 : intent.packType === "6m" ? 180 : intent.packType === "1y" ? 365 : 0));
+      if (!intent.userId || !intent.memo || !amountExpected || !days) {
+        return res.status(404).json({ success: false, message: "Dữ liệu hóa đơn không hợp lệ." });
+      }
+      intent = { ...intent, amountExpected, days };
     }
 
     if (amount < Number(intent.amountExpected || 0)) {

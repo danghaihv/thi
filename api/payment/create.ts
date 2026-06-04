@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getDb } from "./_shared.js";
+import { createPaymentIntent, getDb } from "./_shared.js";
 
 const PACK_CONFIG: Record<string, { days: number; label: string }> = {
   "1m": { days: 30, label: "VIP 1 tháng" },
@@ -57,11 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const codePrefix = process.env.PAYMENT_CODE_PREFIX || "HMATH";
     const memo = `${codePrefix}${safeName}${randomCode}`;
 
-    await db.collection("payments").doc(memo).set({
+    const intent = await createPaymentIntent({
       userId,
-      userEmail: userData.email || "",
-      userName: userData.name || userData.fullName || "",
-      amount,
+      planCode: originalPackType === "1m" ? "vip_1m" : originalPackType === "6m" ? "vip_6m" : "vip_1y",
+      amountExpected: amount,
       days: pack.days,
       packType: originalPackType,
       label: pack.label,
@@ -73,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.json({
       success: true,
-      memo,
+      memo: intent.memo,
       amount,
       days: pack.days,
       label: pack.label,
