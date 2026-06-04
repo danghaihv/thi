@@ -177,13 +177,20 @@ export default function ExamWorkspace() {
       setLoadingRecommendations(true);
       try {
         const examsCol = collection(db, 'exams');
-        // Let's query exams for the same grade (khối)
-        const q = query(examsCol, where('grade', '==', exam.grade));
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(query(examsCol));
+        const normalizeGrade = (value: any) => {
+          const n = Number(value);
+          if (Number.isFinite(n) && n > 0) return n;
+          const match = String(value || '').match(/(\d+)/);
+          return match ? Number(match[1]) : null;
+        };
+        const targetGrade = normalizeGrade(exam.grade) ?? normalizeGrade(exam.title) ?? normalizeGrade(exam.name);
         const list: any[] = [];
         querySnapshot.forEach(docSnap => {
-          if (docSnap.id !== id) {
-            const data = docSnap.data();
+          if (docSnap.id === id) return;
+          const data = docSnap.data();
+          const recGrade = normalizeGrade(data.grade) ?? normalizeGrade(data.title) ?? normalizeGrade(data.name);
+          if (targetGrade !== null && recGrade !== null && recGrade === targetGrade) {
             list.push({
               id: docSnap.id,
               ...data
@@ -191,25 +198,7 @@ export default function ExamWorkspace() {
           }
         });
 
-        // Calculate relevance/similarity score
-        // Same category: +10 pts
-        // Same difficulty: +5 pts
-        const scored = list.map(item => {
-          let score = 0;
-          if (item.category === exam.category) {
-            score += 10;
-          }
-          if ((item.difficulty || 'Trung bình') === (exam.difficulty || 'Trung bình')) {
-            score += 5;
-          }
-          return { ...item, similarityScore: score };
-        });
-
-        // Sort by score descending
-        scored.sort((a, b) => b.similarityScore - a.similarityScore);
-
-        // Take top 3 recommendations
-        setRecommendedExams(scored.slice(0, 3));
+        setRecommendedExams(list.slice(0, 3));
       } catch (err) {
         console.error("Lỗi khi tải đề xuất học tập:", err);
       } finally {
@@ -500,7 +489,6 @@ export default function ExamWorkspace() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-bold text-slate-950 md:text-xl">Đề xuất ôn tập tiếp theo</h3>
-                <p className="mt-1 text-sm text-slate-500">Các đề cùng khối được ưu tiên theo chuyên đề và độ khó.</p>
               </div>
               <Sparkles className="h-5 w-5 text-indigo-500" />
             </div>
@@ -513,8 +501,6 @@ export default function ExamWorkspace() {
             ) : recommendedExams.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-3">
                 {recommendedExams.map((recExam) => {
-                  const matchCat = recExam.category === exam.category;
-                  const matchDiff = (recExam.difficulty || 'Trung bình') === (exam.difficulty || 'Trung bình');
                   return (
                     <button
                       key={recExam.id}
@@ -522,8 +508,7 @@ export default function ExamWorkspace() {
                       onClick={() => navigate(`/exam/${recExam.id}`)}
                     >
                       <div className="flex flex-wrap gap-2">
-                        {matchCat && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Cùng chuyên đề</span>}
-                        {matchDiff && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">Cùng mức độ</span>}
+                        <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Cùng khối lớp</span>
                       </div>
                       <h4 className="mt-3 line-clamp-2 text-sm font-bold leading-snug text-slate-900 group-hover:text-indigo-700">
                         {recExam.title}
@@ -542,7 +527,7 @@ export default function ExamWorkspace() {
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                Chưa có đề thi liên quan trực tiếp khác trong cùng lớp này.
+                Chưa tìm thấy đề cùng khối lớp khác để gợi ý.
               </div>
             )}
           </div>

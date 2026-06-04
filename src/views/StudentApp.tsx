@@ -108,7 +108,9 @@ function StudentLayout() {
               <Sparkles className="h-3.5 w-3.5" /> Học sinh
             </div>
             <div className="mt-4 text-2xl font-bold leading-tight">{user.name || user.fullName || 'Học sinh'}</div>
-            <p className="mt-2 text-sm text-white/70">Tiếp tục luyện đề, xem tiến trình và quản lý tài khoản.</p>
+            <div className="mt-2 inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
+              {user.vipExpiry && new Date(user.vipExpiry).getTime() > Date.now() ? 'Tài khoản VIP' : 'Tài khoản thường'}
+            </div>
           </div>
 
           <nav className="mt-4 space-y-1.5">
@@ -123,13 +125,6 @@ function StudentLayout() {
             })}
           </nav>
 
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-            <div className="flex items-center gap-2 text-slate-900 font-semibold">
-              <Sparkles className="h-4 w-4 text-indigo-600" />
-              Trạng thái
-            </div>
-            <p className="mt-2 text-sm leading-6">Tài khoản được đồng bộ tự động với Firebase và Firestore.</p>
-          </div>
         </aside>
       ) : null}
 

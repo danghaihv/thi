@@ -474,17 +474,23 @@ export function StudentHistory() {
 export function StudentUpgradeHub() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [pricing, setPricing] = useState({ vip1MonthPrice: 50000, vip6MonthPrice: 240000, vip1YearPrice: 450000, sepayBankId: '', sepayAccountNo: '', sepayAccountName: '' });
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutPack, setCheckoutPack] = useState<any>(null);
   const [paymentMemo, setPaymentMemo] = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [checkMessage, setCheckMessage] = useState('');
+  const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutDetails, setCheckoutDetails] = useState<{ amount: number; days: number; name: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [upgradeHistory, setUpgradeHistory] = useState<any[]>([]);
 
   const fetchUserAndStats = async () => {
     if (!auth.currentUser) return;
+    setIsLoadingUser(true);
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (userDoc.exists()) {
@@ -502,19 +508,36 @@ export function StudentUpgradeHub() {
         setPricing((prev) => ({ ...prev, vip1MonthPrice: sData.vip1MonthPrice ?? 50000, vip6MonthPrice: sData.vip6MonthPrice ?? 240000, vip1YearPrice: sData.vip1YearPrice ?? 450000, sepayBankId: sData.sepayBankId || '', sepayAccountNo: sData.sepayAccountNo || '', sepayAccountName: sData.sepayAccountName || '' }));
       }
 
-      const q = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid));
+      const q = query(collection(db, 'payment_intents'), where('userId', '==', auth.currentUser.uid));
       const subSnap = await getDocs(q);
       const items: any[] = [];
       subSnap.forEach((snapshotDoc) => items.push({ id: snapshotDoc.id, ...snapshotDoc.data() }));
-      items.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
+      items.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime());
       setUpgradeHistory(items.slice(0, 5));
     } catch (err) {
       console.error('Error loading upgrade hub:', err);
+    } finally {
+      setIsLoadingUser(false);
     }
   };
 
   useEffect(() => {
+    let unsubAuth: (() => void) | null = null;
+
     fetchUserAndStats();
+    if (!auth.currentUser) {
+      unsubAuth = auth.onAuthStateChanged((currentUser) => {
+        if (currentUser) {
+          fetchUserAndStats();
+        } else {
+          setIsLoadingUser(false);
+        }
+      });
+    }
+
+    return () => {
+      if (unsubAuth) unsubAuth();
+    };
   }, []);
 
   const initiateCheckout = async (packType: '1m' | '6m' | '1y') => {
@@ -527,9 +550,7 @@ export function StudentUpgradeHub() {
     setCheckMessage('');
     setPaymentIntentId('');
     setPaymentMemo('');
-    setCheckoutPack({ type: packType, amount: 0, days: 0, name: 'Đang tạo hóa đơn...' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    setCheckoutPack(null);
+    setCheckoutPack({ type: packType, amount: expectedPack.amount, days: expectedPack.days, name: expectedPack.name });
     try {
       const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
       const response = await fetch('/api/payment/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, packType, planCode }) });
@@ -560,13 +581,17 @@ export function StudentUpgradeHub() {
   };
 
   useEffect(() => {
-    if (!checkoutPack || !paymentIntentId) return;
+    if (!isCheckoutOpen || !paymentIntentId) return;
     const interval = setInterval(() => fetchUserAndStats(), 5000);
     return () => clearInterval(interval);
-  }, [checkoutPack, paymentIntentId]);
+  }, [isCheckoutOpen, paymentIntentId]);
+
+  if (isLoadingUser && !user) {
+    return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
+  }
 
   if (!user) {
-    return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
+    return <div className="py-20 text-center text-sm font-medium text-slate-500">Không thể tải thông tin tài khoản.</div>;
   }
 
   const isVip = user.vipExpiry && new Date(user.vipExpiry).getTime() > Date.now();
@@ -575,38 +600,79 @@ export function StudentUpgradeHub() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <section className="glass-panel overflow-hidden rounded-[2rem] p-6 shadow-sm md:p-8">
-        <div className="flex items-center justify-between gap-4">
+      <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(79,70,229,0.14),_transparent_38%),linear-gradient(135deg,_#ffffff_0%,_#f8fafc_52%,_#eef2ff_100%)] p-6 shadow-sm md:p-8">
+        <div className="absolute right-[-80px] top-[-90px] h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-700"><Sparkles className="h-3.5 w-3.5" /> Nâng cấp tài khoản</div>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 section-title">Quản lý gói VIP</h2>
-            <p className="mt-2 text-sm text-slate-500">Xem trạng thái VIP, chọn gói nâng cấp và theo dõi lịch sử gần đây.</p>
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-700 backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5" /> Nâng cấp tài khoản
+            </div>
+            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 section-title md:text-5xl">Mở khóa trải nghiệm học tập mạnh hơn</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">VIP giúp bạn xem đáp án chi tiết, theo dõi tiến trình sâu hơn và luyện đề với cảm giác liền mạch hơn mỗi ngày.</p>
           </div>
-          <button onClick={() => navigate('/profile')} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600">Hồ sơ</button>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            {[
+              ['Xem lời giải', 'Mở chi tiết đáp án và phân tích sau mỗi bài làm.'],
+              ['Theo dõi tiến bộ', 'Nhìn rõ nhịp độ, lịch sử và xu hướng học tập.'],
+              ['Luyện đề thoải mái', 'Giảm ma sát khi học, tăng tốc độ ôn tập.'],
+            ].map(([title, desc]) => (
+              <div key={title} className="rounded-[1.4rem] border border-white/80 bg-white/80 p-4 shadow-sm backdrop-blur">
+                <div className="text-sm font-bold text-slate-950">{title}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">{desc}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <section className="glass-panel rounded-[2rem] p-6 shadow-sm">
           <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><ShieldCheck className="h-5 w-5 text-indigo-600" /> Trạng thái tài khoản</h3>
           <p className="mt-2 text-sm text-slate-500">Tài khoản VIP mở khóa xem đáp án, lời giải và giới hạn luyện đề cao hơn.</p>
           <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-            {isVip ? <div className="flex gap-4"><div className="rounded-2xl bg-amber-100 p-3 text-amber-700"><Sparkles className="h-6 w-6 fill-amber-700" /></div><div><h4 className="font-bold text-slate-950">Thành viên VIP đang hoạt động</h4><p className="mt-1 text-sm leading-6 text-slate-600">Bạn đang có đặc quyền học tập cao cấp.</p><div className="mt-3 inline-flex rounded-full bg-amber-200/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-800">Hạn VIP còn {daysRemaining} ngày · {new Date(user.vipExpiry).toLocaleDateString('vi-VN')}</div></div></div> : <div className="flex gap-4"><div className="rounded-2xl bg-white p-3 text-slate-500 shadow-sm"><User className="h-6 w-6" /></div><div className="flex-1"><h4 className="font-bold text-slate-950">Thành viên miễn phí</h4><p className="mt-1 text-sm leading-6 text-slate-600">Giới hạn 10 đề mỗi tháng và không xem được đáp án chi tiết.</p></div></div>}
+            {isVip ? <div className="flex gap-4"><div className="rounded-2xl bg-amber-100 p-3 text-amber-700"><Sparkles className="h-6 w-6 fill-amber-700" /></div><div><h4 className="font-bold text-slate-950">Thành viên VIP đang hoạt động</h4><p className="mt-1 text-sm leading-6 text-slate-600">Bạn đang có đặc quyền học tập cao cấp: luyện đề không giới hạn, xem giải thích chi tiết và theo dõi tiến trình sâu hơn.</p><div className="mt-3 inline-flex rounded-full bg-amber-200/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-800">Hạn VIP còn {daysRemaining} ngày · {new Date(user.vipExpiry).toLocaleDateString('vi-VN')}</div></div></div> : <div className="flex gap-4"><div className="rounded-2xl bg-white p-3 text-slate-500 shadow-sm"><User className="h-6 w-6" /></div><div className="flex-1"><h4 className="font-bold text-slate-950">Thành viên miễn phí</h4><p className="mt-1 text-sm leading-6 text-slate-600">Giới hạn 10 đề mỗi tháng và không xem được đáp án chi tiết.</p></div></div>}
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-6 space-y-4">
             <PriceCard title="Gói 1 tháng" period="30 ngày" price={pricing.vip1MonthPrice} onChoose={() => initiateCheckout('1m')} cta={isVip ? 'Gia hạn 30 ngày' : 'Nâng cấp ngay'} />
-            <PriceCard title="Gói 6 tháng" period="180 ngày" price={pricing.vip6MonthPrice} onChoose={() => initiateCheckout('6m')} featured cta={isVip ? 'Gia hạn 180 ngày' : 'Nâng cấp ngay'} ctaHint="Tiết kiệm khoảng 20%" />
+            <PriceCard title="Gói 6 tháng" period="180 ngày" price={pricing.vip6MonthPrice} onChoose={() => initiateCheckout('6m')} cta={isVip ? 'Gia hạn 180 ngày' : 'Nâng cấp ngay'} ctaHint="Tiết kiệm khoảng 20%" />
             <PriceCard title="Gói 1 năm" period="365 ngày" price={pricing.vip1YearPrice} onChoose={() => initiateCheckout('1y')} cta={isVip ? 'Gia hạn 365 ngày' : 'Nâng cấp ngay'} ctaHint="Tiết kiệm khoảng 25%" />
           </div>
         </section>
 
         <section className="glass-panel rounded-[2rem] p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><HistoryIcon className="h-5 w-5 text-indigo-600" /> Lịch sử nâng cấp</h3>
+            <div>
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><HistoryIcon className="h-5 w-5 text-indigo-600" /> Lịch sử nâng cấp</h3>
+              <p className="mt-1 text-sm text-slate-500">Hiển thị gói đã chọn, thời gian tạo hóa đơn và trạng thái xử lý.</p>
+            </div>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Gần đây</span>
           </div>
           <div className="mt-4 space-y-3">
-            {upgradeHistory.length ? upgradeHistory.map((item) => (<div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><div className="font-semibold text-slate-950">Nâng cấp VIP</div><div className="text-xs text-slate-500">{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString('vi-VN') : 'Mới đây'}</div></div><div className="mt-1 text-sm text-slate-600">Trạng thái VIP được đồng bộ từ giao dịch gần nhất.</div></div>)) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">Chưa có lịch sử nâng cấp.</div>}
+            {upgradeHistory.length ? upgradeHistory.map((item) => {
+              const status = String(item.status || 'awaiting_payment');
+              const statusLabel = status === 'fulfilled' || status === 'completed' ? 'Thành công' : status === 'expired' ? 'Hết hạn' : status === 'canceled' ? 'Đã hủy' : status === 'paid' ? 'Đã thanh toán' : 'Đang chờ';
+              const statusClass = status === 'fulfilled' || status === 'completed' ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : status === 'expired' || status === 'canceled' ? 'border-rose-100 bg-rose-50 text-rose-700' : status === 'paid' ? 'border-amber-100 bg-amber-50 text-amber-700' : 'border-indigo-100 bg-indigo-50 text-indigo-700';
+              const planName = item.planCode === 'vip_6m' ? 'VIP 6 tháng' : item.planCode === 'vip_1y' ? 'VIP 1 năm' : 'VIP 1 tháng';
+              const timeLabel = item.createdAt || item.updatedAt ? new Date(item.createdAt || item.updatedAt).toLocaleString('vi-VN') : 'Mới đây';
+              return (
+                <div key={item.id} className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-slate-950">{planName}</div>
+                      <div className="mt-1 text-xs text-slate-500">{timeLabel}</div>
+                    </div>
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${statusClass}`}>{statusLabel}</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                    <div><span className="font-semibold text-slate-500">Mã hóa đơn:</span> {item.intentId || item.id}</div>
+                    <div><span className="font-semibold text-slate-500">Mã chuyển khoản:</span> {item.memo || '—'}</div>
+                    <div><span className="font-semibold text-slate-500">Số tiền:</span> {typeof item.amountExpected === 'number' ? `${item.amountExpected.toLocaleString('vi-VN')} đ` : (item.amount ? `${Number(item.amount).toLocaleString('vi-VN')} đ` : '—')}</div>
+                    <div><span className="font-semibold text-slate-500">Xử lý:</span> {item.fulfilledAt || item.paidAt ? new Date(item.fulfilledAt || item.paidAt).toLocaleString('vi-VN') : 'Chưa hoàn tất'}</div>
+                  </div>
+                </div>
+              );
+            }) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">Chưa có lịch sử nâng cấp.</div>}
           </div>
         </section>
       </div>
@@ -619,20 +685,26 @@ export function StudentUpgradeHub() {
 export function StudentProfile() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [displayName, setDisplayName] = useState('');
   const [zalo, setZalo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [monthlyExamCount, setMonthlyExamCount] = useState(0);
   const [pricing, setPricing] = useState({ vip1MonthPrice: 50000, vip6MonthPrice: 240000, vip1YearPrice: 450000, sepayBankId: '', sepayAccountNo: '', sepayAccountName: '' });
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutPack, setCheckoutPack] = useState<any>(null);
   const [paymentMemo, setPaymentMemo] = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState('');
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [checkMessage, setCheckMessage] = useState('');
+  const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutDetails, setCheckoutDetails] = useState<{ amount: number; days: number; name: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const fetchUserAndStats = async () => {
     if (!auth.currentUser) return;
+    setIsLoadingUser(true);
     try {
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (userDoc.exists()) {
@@ -646,10 +718,13 @@ export function StudentProfile() {
           avatar: userData.avatar || parsed.avatar || auth.currentUser?.photoURL || '',
         };
         setUser(mergedUser);
+        setDisplayName(mergedUser.name || '');
         setZalo(mergedUser.zalo || '');
         localStorage.setItem('hmath_user', JSON.stringify(mergedUser));
       } else {
-        setUser({ name: auth.currentUser?.displayName || 'Học sinh', email: auth.currentUser?.email || '', avatar: auth.currentUser?.photoURL || '' });
+        const fallbackUser = { name: auth.currentUser?.displayName || 'Học sinh', email: auth.currentUser?.email || '', avatar: auth.currentUser?.photoURL || '' };
+        setUser(fallbackUser);
+        setDisplayName(fallbackUser.name || '');
       }
 
       const setSnap = await getDoc(doc(db, 'settings', 'global'));
@@ -665,40 +740,22 @@ export function StudentProfile() {
           sepayAccountName: sData.sepayAccountName || '',
         }));
       }
-
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      const subQ = query(collection(db, 'submissions'), where('studentId', '==', auth.currentUser.uid), where('submittedAt', '>=', startOfMonth.toISOString()));
-      const subSnap = await getDocs(subQ);
-      setMonthlyExamCount(subSnap.size);
     } catch (err) {
       console.error('Error loading profile stats:', err);
     }
   };
 
   useEffect(() => {
-    let unsubSubmissions: (() => void) | null = null;
     let unsubAuth: (() => void) | null = null;
 
-    const setupRealtimeCount = async (uid: string) => {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      const subQ = query(collection(db, 'submissions'), where('studentId', '==', uid), where('submittedAt', '>=', startOfMonth.toISOString()));
-      unsubSubmissions = onSnapshot(subQ, (subSnap) => setMonthlyExamCount(subSnap.size), (err) => console.error('Realtime submissions counter error:', err));
-    };
-
     fetchUserAndStats();
-    if (auth.currentUser) setupRealtimeCount(auth.currentUser.uid);
-    else {
+    if (!auth.currentUser) {
       unsubAuth = auth.onAuthStateChanged((user) => {
-        if (user) setupRealtimeCount(user.uid);
+        if (user) fetchUserAndStats();
       });
     }
 
     return () => {
-      if (unsubSubmissions) unsubSubmissions();
       if (unsubAuth) unsubAuth();
     };
   }, []);
@@ -708,10 +765,12 @@ export function StudentProfile() {
     setIsSaving(true);
     setMessage('');
     try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), { zalo });
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { name: displayName, fullName: displayName, zalo });
       const saved = localStorage.getItem('hmath_user');
       if (saved) {
         const parsed = JSON.parse(saved);
+        parsed.name = displayName;
+        parsed.fullName = displayName;
         parsed.zalo = zalo;
         localStorage.setItem('hmath_user', JSON.stringify(parsed));
       }
@@ -733,13 +792,20 @@ export function StudentProfile() {
       return;
     }
 
-    setIsCheckingPayment(true);
-    setCheckMessage('');
+    const expectedPack = packType === '1m'
+      ? { amount: pricing.vip1MonthPrice, days: 30, name: 'VIP 1 tháng' }
+      : packType === '6m'
+      ? { amount: pricing.vip6MonthPrice, days: 180, name: 'VIP 6 tháng' }
+      : { amount: pricing.vip1YearPrice, days: 365, name: 'VIP 1 năm' };
+
+    setIsCheckoutOpen(true);
+    setCheckoutStatus('loading');
+    setCheckoutError('');
+    setCheckMessage('Đang tạo mã thanh toán...');
     setPaymentIntentId('');
     setPaymentMemo('');
-    setCheckoutPack({ type: packType, amount: 0, days: 0, name: 'Đang tạo hóa đơn...' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    setCheckoutPack(null);
+    setCheckoutPack({ type: packType, ...expectedPack });
+    setCheckoutDetails({ ...expectedPack });
 
     try {
       const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
@@ -752,21 +818,31 @@ export function StudentProfile() {
       const data = await response.json();
 
       if (!response.ok) {
+        setCheckoutStatus('error');
+        setCheckoutError(data.error || data.message || 'Không thể tạo hóa đơn. Vui lòng thử lại.');
         setCheckMessage(data.error || data.message || 'Không thể tạo hóa đơn. Vui lòng thử lại.');
         return;
       }
       if (!data.bankId || !data.accountNo) {
+        setCheckoutStatus('error');
+        setCheckoutError('Chưa cấu hình tài khoản nhận tiền. Vui lòng liên hệ admin.');
         setCheckMessage('Chưa cấu hình tài khoản nhận tiền. Vui lòng liên hệ admin.');
         return;
       }
 
       setCheckoutPack({ type: packType, amount: data.amount, days: data.days, name: data.label });
+      setCheckoutDetails({ amount: data.amount, days: data.days, name: data.label });
       setPaymentIntentId(data.intentId || '');
       setPaymentMemo(data.memo);
+      setCheckoutStatus('ready');
       setCheckMessage('Đang chờ hệ thống ghi nhận thanh toán...');
+      return;
     } catch (err: any) {
       console.error('Create payment error:', err);
+      setCheckoutStatus('error');
+      setCheckoutError('Lỗi kết nối server: ' + err.message);
       setCheckMessage('Lỗi kết nối server: ' + err.message);
+      setCheckoutPack({ type: packType, amount: 0, days: 0, name: 'Lỗi tạo hóa đơn' });
     } finally {
       setIsCheckingPayment(false);
     }
@@ -779,13 +855,17 @@ export function StudentProfile() {
   };
 
   useEffect(() => {
-    if (!checkoutPack || !paymentIntentId) return;
+    if (!isCheckoutOpen || !paymentIntentId) return;
     const interval = setInterval(() => fetchUserAndStats(), 5000);
     return () => clearInterval(interval);
-  }, [checkoutPack, paymentIntentId]);
+  }, [isCheckoutOpen, paymentIntentId]);
+
+  if (isLoadingUser && !user) {
+    return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
+  }
 
   if (!user) {
-    return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
+    return <div className="py-20 text-center text-sm font-medium text-slate-500">Không thể tải thông tin tài khoản.</div>;
   }
 
   const isVip = user.vipExpiry && new Date(user.vipExpiry).getTime() > Date.now();
@@ -800,7 +880,7 @@ export function StudentProfile() {
             <div className="relative">
               <div className="absolute -inset-3 rounded-[2rem] bg-indigo-500/10 blur-2xl" />
               <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-lg">
-                {user.avatar ? <img src={user.avatar} alt={user.name || user.fullName || 'Học sinh'} className="h-full w-full object-cover" referrerPolicy="no-referrer" /> : <div className="flex h-full w-full items-center justify-center bg-indigo-50 text-4xl font-extrabold uppercase text-indigo-700">{(user.name || user.fullName || 'U')[0]}</div>}
+                {user.avatar ? <img src={user.avatar} alt={displayName || user.name || user.fullName || 'Học sinh'} className="h-full w-full object-cover" referrerPolicy="no-referrer" /> : <div className="flex h-full w-full items-center justify-center bg-indigo-50 text-4xl font-extrabold uppercase text-indigo-700">{(displayName || user.name || user.fullName || 'U')[0]}</div>}
               </div>
             </div>
           </div>
@@ -811,12 +891,9 @@ export function StudentProfile() {
                 <User className="h-3.5 w-3.5 text-indigo-600" /> Hồ sơ cá nhân
               </div>
               <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 section-title">{user.name || user.fullName || 'Học sinh'}</h2>
-              <p className="mt-2 text-sm text-slate-500">{isVip ? `VIP còn ${daysRemaining} ngày` : 'Thành viên miễn phí'}</p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-950 px-4 py-3 text-white shadow-sm"><div className="text-[11px] uppercase tracking-[0.2em] text-white/50">Email</div><div className="mt-1 text-sm font-semibold">{user.email}</div></div>
-              <div className="rounded-2xl bg-white px-4 py-3 shadow-sm"><div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Zalo</div><div className="mt-1 text-sm font-semibold text-slate-900">{zalo || 'Chưa cập nhật'}</div></div>
-              <div className="rounded-2xl bg-white px-4 py-3 shadow-sm"><div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Bài trong tháng</div><div className="mt-1 text-sm font-semibold text-slate-900">{monthlyExamCount} / 10</div></div>
             </div>
           </div>
         </div>
@@ -824,13 +901,13 @@ export function StudentProfile() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <section className="glass-panel rounded-[2rem] p-6 shadow-sm">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><Phone className="h-5 w-5 text-indigo-600" /> Thông tin liên hệ</h3>
-          <p className="mt-2 text-sm text-slate-500">Cập nhật số Zalo để nhận thông báo và hỗ trợ thanh toán.</p>
+          <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><Phone className="h-5 w-5 text-indigo-600" /> Thông tin cá nhân</h3>
+          <p className="mt-2 text-sm text-slate-500">Cập nhật tên hiển thị và số Zalo để đồng bộ hồ sơ.</p>
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><Mail className="h-3.5 w-3.5" /> Địa chỉ Email</label>
-              <input type="text" value={user.email} disabled className="w-full cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500" />
+              <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><User className="h-3.5 w-3.5" /> Tên hiển thị</label>
+              <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Nhập tên hiển thị..." className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
             </div>
             <div>
               <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><Phone className="h-3.5 w-3.5" /> Số điện thoại Zalo</label>
@@ -848,8 +925,7 @@ export function StudentProfile() {
         <section className="glass-panel rounded-[2rem] p-6 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><ShieldCheck className="h-5 w-5 text-indigo-600" /> Trạng thái tài khoản</h3>
-              <p className="mt-2 text-sm text-slate-500">Tài khoản VIP mở khóa xem đáp án, lời giải và giới hạn luyện đề cao hơn.</p>
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-950"><ShieldCheck className="h-5 w-5 text-indigo-600" /> Tài khoản</h3>
             </div>
             {isVip ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-700"><Star className="h-3.5 w-3.5 fill-amber-700" /> VIP</span> : null}
           </div>
@@ -870,100 +946,83 @@ export function StudentProfile() {
                 <div className="flex-1">
                   <h4 className="font-bold text-slate-950">Thành viên miễn phí</h4>
                   <p className="mt-1 text-sm leading-6 text-slate-600">Giới hạn 10 đề mỗi tháng và không xem được đáp án chi tiết.</p>
-                  <div className="mt-4">
-                    <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><span>Lượt thi tháng này</span><span>{monthlyExamCount} / 10</span></div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full transition-all ${monthlyExamCount >= 10 ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(100, (monthlyExamCount / 10) * 100)}%` }} /></div>
-                    {monthlyExamCount >= 10 ? <p className="mt-2 text-xs font-bold text-rose-600">Bạn đã đạt giới hạn đề tháng này. Hãy nâng cấp VIP để thi tiếp.</p> : null}
-                  </div>
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="mt-6">
-            <div className="text-center">
-              <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">Các gói nâng cấp VIP</h4>
-              <p className="mt-1 text-xs text-slate-500">Mở khóa đầy đủ nội dung và tăng giới hạn luyện tập.</p>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <PriceCard title="Gói 1 tháng" period="30 ngày" price={pricing.vip1MonthPrice} onChoose={() => initiateCheckout('1m')} cta={isVip ? 'Gia hạn 30 ngày' : 'Nâng cấp ngay'} />
-              <PriceCard title="Gói 6 tháng" period="180 ngày" price={pricing.vip6MonthPrice} onChoose={() => initiateCheckout('6m')} featured cta={isVip ? 'Gia hạn 180 ngày' : 'Nâng cấp ngay'} ctaHint="Tiết kiệm khoảng 20%" />
-              <PriceCard title="Gói 1 năm" period="365 ngày" price={pricing.vip1YearPrice} onChoose={() => initiateCheckout('1y')} cta={isVip ? 'Gia hạn 365 ngày' : 'Nâng cấp ngay'} ctaHint="Tiết kiệm khoảng 25%" />
-            </div>
           </div>
         </section>
       </div>
 
-      {checkoutPack && (
+
+      {isCheckoutOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-md">
           <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col gap-8 overflow-y-auto rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl md:flex-row md:p-8">
-            <button onClick={() => setCheckoutPack(null)} className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"><X className="h-5 w-5" /></button>
+            <button onClick={() => { setIsCheckoutOpen(false); setPaymentIntentId(''); setPaymentMemo(''); setCheckoutPack(null); setCheckoutDetails(null); setCheckoutStatus('idle'); setCheckoutError(''); setCheckMessage(''); }} className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"><X className="h-5 w-5" /></button>
 
-            {!pricing.sepayBankId || !pricing.sepayAccountNo ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center text-slate-500">
-                <AlertCircle className="h-16 w-16 text-amber-500" />
-                <h4 className="text-lg font-bold text-slate-950">Cổng thanh toán chưa sẵn sàng</h4>
-                <p className="max-w-md text-sm leading-6">Giáo viên / Admin chưa thiết lập tài khoản ngân hàng thụ hưởng qua SePay trong Cài đặt hệ thống.</p>
+            <div className="flex-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 text-center md:p-6">
+              <h4 className="mb-4 text-sm font-extrabold uppercase tracking-[0.22em] text-indigo-600">Quét mã QR để thanh toán</h4>
+              {checkoutStatus === 'loading' ? (
+                <div className="flex h-[240px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-sm font-semibold text-slate-500">
+                  Đang tạo mã thanh toán...
+                </div>
+              ) : checkoutStatus === 'error' ? (
+                <div className="mx-auto flex h-[240px] w-[240px] items-center justify-center rounded-2xl bg-rose-50 text-center text-sm font-semibold text-rose-600 px-6">{checkoutError || 'Mã QR thất bại'}</div>
+              ) : qrUrl ? (
+                <img src={qrUrl} alt="VietQR SePay VIP Code" className="mx-auto w-full max-w-[240px] rounded-2xl border border-slate-100 bg-white p-3 shadow-sm" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="mx-auto flex h-[240px] w-[240px] items-center justify-center rounded-2xl bg-slate-100 text-slate-400">Mã QR thất bại</div>
+              )}
+              <div className="mt-4 space-y-2 text-xs text-slate-500">
+                <div className="flex items-center justify-center gap-1"><Check className="h-3.5 w-3.5 text-emerald-500" /> Hỗ trợ mọi ngân hàng</div>
+                <div>Mở ứng dụng ngân hàng và bấm &quot;Quét mã&quot;</div>
+                {qrUrl ? <button type="button" onClick={async () => {
+                  if (!qrUrl) return;
+                  const response = await fetch(qrUrl);
+                  const blob = await response.blob();
+                  const objectUrl = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = objectUrl;
+                  a.download = `sepay-qr-${paymentMemo || 'hmath'}.png`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(objectUrl);
+                }} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50">Tải mã QR</button> : null}
               </div>
-            ) : (
-              <>
-                <div className="flex-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 text-center md:p-6">
-                  <h4 className="mb-4 text-sm font-extrabold uppercase tracking-[0.22em] text-indigo-600">Quét mã QR để thanh toán</h4>
-                  {qrUrl ? <img src={qrUrl} alt="VietQR SePay VIP Code" className="mx-auto w-full max-w-[240px] rounded-2xl border border-slate-100 bg-white p-3 shadow-sm" referrerPolicy="no-referrer" /> : <div className="mx-auto flex h-[240px] w-[240px] items-center justify-center rounded-2xl bg-slate-100 text-slate-400">Mã QR thất bại</div>}
-                  <div className="mt-4 space-y-2 text-xs text-slate-500">
-                    <div className="flex items-center justify-center gap-1"><Check className="h-3.5 w-3.5 text-emerald-500" /> Hỗ trợ mọi ngân hàng</div>
-                    <div>Mở ứng dụng ngân hàng và bấm &quot;Quét mã&quot;</div>
-                    <button type="button" onClick={async () => {
-                      if (!qrUrl) return;
-                      const response = await fetch(qrUrl);
-                      const blob = await response.blob();
-                      const objectUrl = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = objectUrl;
-                      a.download = `sepay-qr-${paymentMemo || 'hmath'}.png`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(objectUrl);
-                    }} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50">Tải mã QR</button>
-                  </div>
+            </div>
+
+            <div className="flex-1 space-y-6">
+              <div>
+                <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-indigo-600">Thanh toán hóa đơn tự động</span>
+                <h3 className="mt-3 text-2xl font-bold text-slate-950">Nâng cấp gói {checkoutDetails?.name || checkoutPack?.name || 'đang tạo...'}</h3>
+                <p className="mt-1 text-sm text-slate-500">Giao dịch được đối soát hoàn toàn tự động dựa trên nội dung chuyển khoản.</p>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <FieldRow label="Ngân hàng" value={pricing.sepayBankId || 'Đang tạo...'} />
+                <FieldRow label="Số tài khoản" value={pricing.sepayAccountNo || 'Đang tạo...'} copyValue={pricing.sepayAccountNo} copied={copiedField === 'stk'} onCopy={() => handleCopy(pricing.sepayAccountNo, 'stk')} />
+                <FieldRow label="Chủ tài khoản" value={pricing.sepayAccountName || 'Đang tạo...'} />
+                <FieldRow label="Số tiền" value={`${(checkoutDetails?.amount ?? checkoutPack?.amount ?? 0).toLocaleString('vi-VN')} đ`} copyValue={String(checkoutDetails?.amount ?? checkoutPack?.amount ?? 0)} copied={copiedField === 'amount'} onCopy={() => handleCopy(String(checkoutDetails?.amount ?? checkoutPack?.amount ?? 0), 'amount')} highlight />
+                <FieldRow label="Nội dung (CỰC KỲ QUAN TRỌNG)" value={paymentMemo || 'Đang tạo...'} copyValue={paymentMemo} copied={copiedField === 'memo'} onCopy={() => handleCopy(paymentMemo, 'memo')} mono badge />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <RefreshCw className={`h-4 w-4 text-indigo-600 ${checkoutStatus === 'loading' || isCheckingPayment ? 'animate-spin' : ''}`} />
+                  <p>{checkoutStatus === 'loading' ? 'Đang tạo và đồng bộ mã thanh toán. Vui lòng chờ một chút.' : 'Hệ thống tự động đồng bộ tài khoản. Không tải lại trang này khi tiền đang xử lý.'}</p>
                 </div>
 
-                <div className="flex-1 space-y-6">
-                  <div>
-                    <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-indigo-600">Thanh toán hóa đơn tự động</span>
-                    <h3 className="mt-3 text-2xl font-bold text-slate-950">Nâng cấp gói {checkoutPack.name}</h3>
-                    <p className="mt-1 text-sm text-slate-500">Giao dịch được đối soát hoàn toàn tự động dựa trên nội dung chuyển khoản.</p>
+                {checkMessage ? (
+                  <div className={`rounded-2xl border p-3.5 text-xs font-bold leading-normal ${checkMessage.includes('thành công') ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : checkMessage.toLowerCase().includes('đang') ? 'border-indigo-100 bg-indigo-50 text-indigo-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+                    {checkMessage}
                   </div>
+                ) : null}
 
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                    <FieldRow label="Ngân hàng" value={pricing.sepayBankId} />
-                    <FieldRow label="Số tài khoản" value={pricing.sepayAccountNo} copyValue={pricing.sepayAccountNo} copied={copiedField === 'stk'} onCopy={() => handleCopy(pricing.sepayAccountNo, 'stk')} />
-                    <FieldRow label="Chủ tài khoản" value={pricing.sepayAccountName} />
-                    <FieldRow label="Số tiền" value={`${checkoutPack.amount.toLocaleString('vi-VN')} đ`} copyValue={String(checkoutPack.amount)} copied={copiedField === 'amount'} onCopy={() => handleCopy(String(checkoutPack.amount), 'amount')} highlight />
-                    <FieldRow label="Nội dung (CỰC KỲ QUAN TRỌNG)" value={paymentMemo} copyValue={paymentMemo} copied={copiedField === 'memo'} onCopy={() => handleCopy(paymentMemo, 'memo')} mono badge />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 text-xs text-slate-500">
-                      <RefreshCw className={`h-4 w-4 text-indigo-600 ${isCheckingPayment ? 'animate-spin' : ''}`} />
-                      <p>Hệ thống tự động đồng bộ tài khoản. Không tải lại trang này khi tiền đang xử lý.</p>
-                    </div>
-
-                    {checkMessage ? (
-                      <div className={`rounded-2xl border p-3.5 text-xs font-bold leading-normal ${checkMessage.includes('thành công') ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : checkMessage.toLowerCase().includes('đang') ? 'border-indigo-100 bg-indigo-50 text-indigo-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
-                        {checkMessage}
-                      </div>
-                    ) : null}
-
-                    <div className="flex gap-3">
-                      <button onClick={() => { setCheckoutPack(null); setPaymentIntentId(''); setPaymentMemo(''); }} className="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200">Hủy</button>
-                    </div>
-                  </div>
+                <div className="flex gap-3">
+                  <button onClick={() => { setIsCheckoutOpen(false); setPaymentIntentId(''); setPaymentMemo(''); setCheckoutPack(null); setCheckoutDetails(null); setCheckoutStatus('idle'); setCheckoutError(''); setCheckMessage(''); }} className="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200">Hủy</button>
                 </div>
-              </>
-            )}
+              </div>
+            </div>
           </div>
         </div>
       )}

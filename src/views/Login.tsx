@@ -77,14 +77,14 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
                 Luyện thi toán với trải nghiệm rõ ràng, gọn và tập trung.
               </h1>
               <p className="mt-5 max-w-lg text-sm leading-6 text-white/72 sm:text-base">
-                Một không gian học tập cho học sinh, giáo viên và quản trị đề thi — đồng bộ từ luyện đề, lịch sử, nâng cấp VIP đến quản lý hệ thống.
+                Một không gian luyện đề trực tuyến dành cho học sinh — tập trung vào làm bài, theo dõi lịch sử, nâng cấp tài khoản và duy trì nhịp học ổn định.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 ['Luyện đề', 'Bộ đề theo khối, mức độ và chuyên đề.'],
-                ['Quản lý', 'Tạo, sửa, lọc và xuất bản đề nhanh.'],
+                ['Theo dõi', 'Xem lịch sử làm bài và tiến trình học tập.'],
                 ['Nâng cấp', 'VIP, thanh toán và theo dõi trạng thái.'],
               ].map(([title, desc]) => (
                 <div key={title} className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
@@ -111,7 +111,7 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
             <div className="mb-6 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-600">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                <p>Hệ thống tự đồng bộ hồ sơ người dùng và tự điều hướng theo vai trò học sinh hoặc giáo viên.</p>
+                <p>Hệ thống tự đồng bộ hồ sơ người dùng và đưa bạn vào không gian luyện đề dành cho học sinh.</p>
               </div>
             </div>
 
@@ -142,7 +142,7 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
             </button>
 
             <div className="mt-6 text-xs leading-5 text-slate-500">
-              Sau khi đăng nhập, bạn sẽ được đưa về đúng vai trò và không cần thao tác lại.
+              Sau khi đăng nhập, bạn có thể bắt đầu luyện đề ngay mà không cần thao tác thêm.
             </div>
           </div>
         </div>
