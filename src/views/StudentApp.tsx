@@ -18,6 +18,10 @@ function readLocalUser() {
   }
 }
 
+function saveReturnPath() {
+  localStorage.setItem('hmath_after_login', `${window.location.pathname}${window.location.search}`);
+}
+
 function RequireLogin({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(() => readLocalUser());
@@ -32,13 +36,17 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (user) setLoading(false);
+    if (user) {
+      setLoading(false);
+      return;
+    }
 
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
         setLoading(false);
       } else if (!localStorage.getItem('hmath_user')) {
         localStorage.removeItem('hmath_user');
+        saveReturnPath();
         navigate('/login');
         setLoading(false);
       }
@@ -127,7 +135,7 @@ function StudentLayout() {
           <Route path="/" element={<StudentHome />} />
           <Route path="/dashboard" element={<RequireLogin><StudentDashboard /></RequireLogin>} />
           <Route path="/history" element={<RequireLogin><StudentHistory /></RequireLogin>} />
-          <Route path="/upgrade" element={<RequireLogin><UpgradeHub /></RequireLogin>} />
+          <Route path="/upgrade" element={<RequireLogin><StudentCheckout /></RequireLogin>} />
           <Route path="/profile" element={<RequireLogin><StudentProfile /></RequireLogin>} />
           <Route path="/checkout" element={<RequireLogin><StudentCheckout /></RequireLogin>} />
         </Routes>

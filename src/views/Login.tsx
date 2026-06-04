@@ -45,8 +45,10 @@ export default function Login({ onLogin }: { onLogin: (user: any) => void }) {
         console.warn('Firestore sync failed (non-blocking):', firestoreErr);
       }
 
+      const savedTarget = localStorage.getItem('hmath_after_login');
       setTimeout(() => {
         if (savedTarget && initialUserData.role === 'student') {
+          localStorage.removeItem('hmath_after_login');
           navigate(savedTarget);
         } else {
           navigate(initialUserData.role === 'student' ? '/' : '/admin');
