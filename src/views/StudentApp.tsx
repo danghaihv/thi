@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User } from 'lucide-react';
+import { BookOpen, Clock, PlayCircle, Filter, LayoutDashboard, History, Search, Users, User, Sparkles, ChevronRight } from 'lucide-react';
 import ExamWorkspace from './ExamWorkspace';
 import { StudentDashboard, StudentHistory, StudentProfile } from './StudentPages';
 import { StudentCheckout } from './StudentCheckoutPage.tmp';
@@ -8,19 +8,19 @@ import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestor
 import { db, auth } from '../lib/firebase';
 import { getCategoryBadgeStyle } from '../components/ExamManager';
 
+function readLocalUser() {
+  const saved = localStorage.getItem('hmath_user');
+  if (!saved) return null;
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return null;
+  }
+}
+
 function RequireLogin({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(() => {
-    const saved = localStorage.getItem('hmath_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [user, setUser] = useState<any>(() => readLocalUser());
   const [loading, setLoading] = useState(!user);
 
   useEffect(() => {
@@ -31,21 +31,15 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (user) {
-      setLoading(false);
-    }
+    if (user) setLoading(false);
 
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
         setLoading(false);
-      } else {
-        const currentPath = window.location.pathname;
-        const isExamPage = currentPath.includes('/exam/');
-        if (!isExamPage && !localStorage.getItem('hmath_user')) {
-          localStorage.removeItem('hmath_user');
-          navigate('/login');
-          setLoading(false);
-        }
+      } else if (!localStorage.getItem('hmath_user')) {
+        localStorage.removeItem('hmath_user');
+        navigate('/login');
+        setLoading(false);
       }
     });
 
@@ -54,12 +48,13 @@ function RequireLogin({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-        <p className="text-sm font-medium text-slate-500">Đang đồng bộ phiên đăng nhập...</p>
+      <div className="glass-panel mx-auto flex max-w-md flex-col items-center justify-center rounded-[2rem] px-6 py-16 text-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+        <p className="mt-4 text-sm font-medium text-slate-500">Đang đồng bộ phiên đăng nhập...</p>
       </div>
     );
   }
+
   return user ? children : null;
 }
 
@@ -75,37 +70,58 @@ export default function StudentApp() {
 function StudentLayout() {
   const location = useLocation();
   const path = location.pathname;
-  const userStr = localStorage.getItem('hmath_user');
-  const user = userStr ? JSON.parse(userStr) : null;
+  const user = useMemo(() => readLocalUser(), [location.pathname]);
+
+  const navItems = [
+    { to: '/', label: 'Luyện thi', icon: BookOpen },
+    { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+    { to: '/history', label: 'Lịch sử', icon: History },
+    { to: '/profile', label: 'Tài khoản', icon: User },
+  ];
 
   const getLinkClass = (p: string) => {
-    return `w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-all ${
+    return `flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition-all ${
       path === p
-        ? 'bg-indigo-600 text-white shadow-md'
-        : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'
+        ? 'bg-slate-950 text-white shadow-lg shadow-slate-950/10'
+        : 'text-slate-600 hover:bg-slate-100'
     }`;
   };
 
   return (
-    <div className={`flex flex-col ${user ? 'md:flex-row gap-8' : ''} animate-in fade-in duration-300`}>
-      {user && (
-      <div className="w-full md:w-64 shrink-0 space-y-2 md:sticky md:top-24 h-max">
-         <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 mb-4 px-2">Menu Học Tập</h3>
-         <Link to="/" className={getLinkClass('/')}>
-           <BookOpen className="w-5 h-5" /> Luyện thi Toán
-         </Link>
-         <Link to="/dashboard" className={getLinkClass('/dashboard')}>
-           <LayoutDashboard className="w-5 h-5" /> Tổng quan
-         </Link>
-         <Link to="/history" className={getLinkClass('/history')}>
-           <History className="w-5 h-5" /> Lịch sử làm bài
-         </Link>
-         <Link to="/profile" className={getLinkClass('/profile')}>
-           <User className="w-5 h-5" /> Tài khoản / Cá nhân
-         </Link>
-      </div>
-      )}
-      <div className="flex-1 min-w-0">
+    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      {user ? (
+        <aside className="glass-panel rounded-[2rem] p-4 lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:self-start">
+          <div className="rounded-[1.5rem] bg-gradient-to-br from-indigo-600 via-slate-900 to-slate-950 px-5 py-5 text-white shadow-xl shadow-slate-950/10">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/75">
+              <Sparkles className="h-3.5 w-3.5" /> Học sinh
+            </div>
+            <div className="mt-4 text-2xl font-bold leading-tight">{user.name || user.fullName || 'Học sinh'}</div>
+            <p className="mt-2 text-sm text-white/70">Tiếp tục luyện đề, xem tiến trình và quản lý tài khoản.</p>
+          </div>
+
+          <nav className="mt-4 space-y-1.5">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.to} to={item.to} className={getLinkClass(item.to)}>
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            <div className="flex items-center gap-2 text-slate-900 font-semibold">
+              <ShieldCheckIcon />
+              Trạng thái
+            </div>
+            <p className="mt-2 text-sm leading-6">Tài khoản được đồng bộ tự động với Firebase và Firestore.</p>
+          </div>
+        </aside>
+      ) : null}
+
+      <div className="min-w-0 space-y-6">
         <Routes>
           <Route path="/" element={<StudentHome />} />
           <Route path="/dashboard" element={<RequireLogin><StudentDashboard /></RequireLogin>} />
@@ -116,6 +132,10 @@ function StudentLayout() {
       </div>
     </div>
   );
+}
+
+function ShieldCheckIcon() {
+  return <Sparkles className="h-4 w-4 text-indigo-600" />;
 }
 
 type ExamSummary = {

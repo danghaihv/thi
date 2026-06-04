@@ -280,152 +280,61 @@ async function startServer() {
     return { alreadyProcessed: false, vipExpiry: newExpiryStr };
   };
 
-  app.post("/api/payment/verify", async (req, res) => {
-    const { userId, memo, amount, days } = req.body;
-    if (!userId || !memo || !amount || !days) {
-      return res.status(400).json({ error: "Thiếu thông tin yêu cầu thanh toán." });
+
+  const createPaymentIntent = async (req: any, res: any) => {
+    const { userId, packType, planCode } = req.body;
+    const effectivePackType = packType || (planCode === 'vip_1m' ? '1m' : planCode === 'vip_6m' ? '6m' : planCode === 'vip_1y' ? '1y' : undefined);
+    if (!userId || !effectivePackType) {
+      return res.status(400).json({ error: 'Thiếu userId hoặc packType.' });
+    }
+
+    const packMap: Record<string, { days: number; amount: number; label: string }> = {
+      '1m': { days: 30, amount: 0, label: 'VIP 1 tháng' },
+      '6m': { days: 180, amount: 0, label: 'VIP 6 tháng' },
+      '1y': { days: 365, amount: 0, label: 'VIP 1 năm' },
+    };
+    const pack = packMap[effectivePackType];
+    if (!pack) {
+      return res.status(400).json({ error: 'Gói VIP không hợp lệ.' });
     }
 
     try {
       const settingsRef = doc(db, 'settings', 'global');
       const settingsSnap = await getDoc(settingsRef);
       if (!settingsSnap.exists()) {
-        return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
-      }
-
-      const settingsData = settingsSnap.data();
-      const apiKey = settingsData.sepayApiKey;
-      if (!apiKey) {
-        return res.status(400).json({ error: "Giáo viên chưa kết nối cổng SePay API." });
-      }
-
-      const response = await fetch("https://apiquery.sepay.vn/transactions/list", {
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("SePay verify response error:", response.status, errorText);
-        return res.status(500).json({ error: "Không thể kết nối cổng SePay. Mã lỗi: " + response.status });
-      }
-
-      let rawData: any;
-      try {
-        rawData = await response.json();
-      } catch (parseErr: any) {
-        console.error("Failed to parse SePay response:", parseErr);
-        return res.status(500).json({ error: "Lỗi phân tích dữ liệu từ SePay" });
-      }
-
-      if (rawData.error || rawData.status === 'error') {
-        console.error("SePay API error:", rawData);
-        return res.status(500).json({ error: "Lỗi từ API SePay: " + (rawData.message || rawData.error) });
-      }
-
-      const transactions = Array.isArray(rawData.transactions) ? rawData.transactions : [];
-      if (transactions.length === 0) {
-        console.warn("No transactions found from SePay");
-        return res.json({
-          success: false,
-          message: "Chưa nhận được giao dịch chuyển khoản tương thích. Vui lòng đảm bảo bạn điền đúng nội dung và số tiền, sau đó thử kiểm tra lại."
-        });
-      }
-
-      const cleanMemo = String(memo).trim().toUpperCase();
-      const expectedAmount = Number(amount);
-      const matchingTx = transactions.find((tx: any) => {
-        const txContent = (tx.transaction_content || '').toUpperCase();
-        const txAmount = Number(tx.amount_in || 0);
-        return txContent.includes(cleanMemo) && txAmount >= expectedAmount;
-      });
-
-      if (!matchingTx) {
-        return res.json({
-          success: false,
-          message: "Chưa nhận được giao dịch chuyển khoản tương thích. Vui lòng đảm bảo bạn điền đúng nội dung và số tiền, sau đó thử kiểm tra lại."
-        });
-      }
-
-      const upgraded = await applyVipUpgrade({
-        userId,
-        memo,
-        amount: Number(amount),
-        days: Number(days),
-        sepayTxId: matchingTx.id ? String(matchingTx.id) : ''
-      });
-
-      return res.json({
-        success: true,
-        message: upgraded.alreadyProcessed ? "Hóa đơn này đã được xử lý thành công trước đó." : "Thanh toán thành công! Tài khoản đã được nâng cấp VIP.",
-        vipExpiry: upgraded.vipExpiry
-      });
-    } catch (err: any) {
-      console.error("Verify endpoint error:", err);
-      return res.status(500).json({ error: "Lỗi hệ thống đối soát thanh toán: " + err.message });
-    }
-  });
-
-
-  app.post("/api/payment/create", async (req, res) => {
-    const { userId, packType } = req.body;
-    if (!userId || !packType) {
-      return res.status(400).json({ error: "Thiếu userId hoặc packType." });
-    }
-
-    const packMap: Record<string, { days: number; amount: number; label: string }> = {
-      "1m": { days: 30, amount: 0, label: "VIP 1 tháng" },
-      "6m": { days: 180, amount: 0, label: "VIP 6 tháng" },
-      "1y": { days: 365, amount: 0, label: "VIP 1 năm" },
-    };
-    const pack = packMap[packType];
-    if (!pack) {
-      return res.status(400).json({ error: "Gói VIP không hợp lệ." });
-    }
-
-    try {
-      const settingsRef = doc(db, "settings", "global");
-      const settingsSnap = await getDoc(settingsRef);
-      if (!settingsSnap.exists()) {
-        return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
+        return res.status(400).json({ error: 'Hệ thống chưa thiết lập cài đặt thanh toán.' });
       }
       const settingsData: any = settingsSnap.data();
 
-      if (!settingsData.sepayApiKey) {
-        return res.status(400).json({ error: "Giáo viên chưa kết nối cổng SePay API." });
-      }
-
-      const amount = packType === "1m"
+      const amount = effectivePackType === '1m'
         ? Number(settingsData.vip1MonthPrice || 50000)
-        : packType === "6m"
-        ? Number(settingsData.vip6MonthPrice || 240000)
-        : Number(settingsData.vip1YearPrice || 450000);
+        : effectivePackType === '6m'
+          ? Number(settingsData.vip6MonthPrice || 240000)
+          : Number(settingsData.vip1YearPrice || 450000);
 
-      const userRef = doc(db, "users", userId);
+      const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
-        return res.status(404).json({ error: "Không tìm thấy tài khoản học sinh." });
+        return res.status(404).json({ error: 'Không tìm thấy tài khoản học sinh.' });
       }
 
       const userData: any = userSnap.data();
-      const userName = (userData.fullName || userData.name || "USER").replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 20);
+      const userName = (userData.fullName || userData.name || 'USER').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20);
       const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const memo = `HM${userName}${randomCode}`;
 
-      await setDoc(doc(db, "payments", memo), {
+      await setDoc(doc(db, 'payments', memo), {
         userId,
-        userEmail: userData.email || "",
-        userName: userData.name || userData.fullName || "",
+        userEmail: userData.email || '',
+        userName: userData.name || userData.fullName || '',
         amount,
         days: pack.days,
-        packType,
+        packType: effectivePackType,
         label: pack.label,
         memo,
-        status: "pending",
+        status: 'pending',
         createdAt: new Date().toISOString(),
-        sepayTxId: "",
+        sepayTxId: '',
       }, { merge: true });
 
       return res.json({
@@ -434,15 +343,18 @@ async function startServer() {
         amount,
         days: pack.days,
         label: pack.label,
-        bankId: settingsData.sepayBankId || "",
-        accountNo: settingsData.sepayAccountNo || "",
-        accountName: settingsData.sepayAccountName || "",
+        bankId: settingsData.sepayBankId || '',
+        accountNo: settingsData.sepayAccountNo || '',
+        accountName: settingsData.sepayAccountName || '',
       });
     } catch (err: any) {
-      console.error("Create payment error:", err);
-      return res.status(500).json({ error: "Lỗi tạo hóa đơn: " + err.message });
+      console.error('Create payment error:', err);
+      return res.status(500).json({ error: 'Lỗi tạo hóa đơn: ' + err.message });
     }
-  });
+  };
+
+  app.post('/api/payment/create', createPaymentIntent);
+  app.post('/api/payment/intents', createPaymentIntent);
 
   app.get("/api/payment/pricing", async (req, res) => {
     try {

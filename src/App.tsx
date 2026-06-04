@@ -2,27 +2,38 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { GraduationCap, LayoutDashboard, LogOut } from 'lucide-react';
-import StudentApp from './views/StudentApp';
-import TeacherApp from './views/TeacherApp';
-import Login from './views/Login';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { GraduationCap, LayoutDashboard, LogOut, ChevronRight } from 'lucide-react';
+const StudentApp = lazy(() => import('./views/StudentApp'));
+const TeacherApp = lazy(() => import('./views/TeacherApp'));
+const Login = lazy(() => import('./views/Login'));
+const LoadingShell = () => <div className="mx-auto flex max-w-md items-center justify-center rounded-[2rem] border border-slate-200 bg-white px-6 py-16 text-sm font-medium text-slate-500 shadow-sm">Đang tải giao diện...</div>;
+
+function readUser() {
+  const saved = localStorage.getItem('hmath_user');
+  if (!saved) return null;
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(() => {
-    const saved = localStorage.getItem('hmath_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [user, setUser] = useState<any>(() => readUser());
+
+  useEffect(() => {
+    setUser(readUser());
+  }, [location.pathname]);
+
+  const handleLogin = (u: any) => {
+    setUser(u);
+    localStorage.setItem('hmath_user', JSON.stringify(u));
+    navigate(u.role === 'student' ? '/' : '/admin');
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('hmath_user');
@@ -30,79 +41,100 @@ export default function App() {
     navigate('/login');
   };
 
-  const isTeacher = location.pathname.startsWith('/admin') || user?.role === 'teacher' || user?.role === 'admin';
+  const isAdminPath = location.pathname.startsWith('/admin');
+  const isAuthenticated = Boolean(user);
 
-  // Redirect to login if trying to access admin without user
-  if (!user && location.pathname.startsWith('/admin')) {
-     return <Login onLogin={(u) => { setUser(u); localStorage.setItem('hmath_user', JSON.stringify(u)); navigate(u.role === 'student' ? '/' : '/admin'); }} />;
+  if (!user && isAdminPath) {
+    return (
+      <Suspense fallback={<LoadingShell />}>
+        <Login onLogin={handleLogin} />
+      </Suspense>
+    );
   }
 
   if (location.pathname === '/login' && user) {
-     navigate(user.role === 'student' ? '/' : '/admin');
+    return <Navigate to={user.role === 'student' ? '/' : '/admin'} replace />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 w-full animate-in slide-in-from-top duration-300">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 md:gap-3 text-indigo-600">
-            <div className="bg-indigo-600 text-white p-1.5 rounded-lg">
-              <GraduationCap className="w-5 h-5 md:w-6 md:h-6" />
+    <div className="app-shell min-h-screen flex flex-col text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
+      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/70 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:py-4">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-950/15">
+              <GraduationCap className="h-5 w-5" />
             </div>
-            <span className="text-lg md:text-xl font-bold tracking-tight text-blue-600">
-              HMath Exam
-            </span>
+            <div>
+              <div className="section-title text-lg font-bold leading-none text-slate-950 md:text-xl">HMath Exam</div>
+              <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Luyện thi trực tuyến</div>
+            </div>
           </Link>
 
-          {user ? (
-            <div className="flex items-center gap-4">
-               <div className="flex bg-slate-100 p-1 rounded-lg">
-                 <Link
-                   to="/"
-                   className={`px-3 py-1.5 md:px-5 md:py-2 flex items-center gap-2 text-sm font-medium rounded-md transition-all ${user.role === 'student' && !location.pathname.startsWith('/admin') ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
-                 >
-                   <GraduationCap className="w-4 h-4"/> Học sinh
-                 </Link>
-                 {(user.role === 'teacher' || user.role === 'admin') && (
-                   <Link
-                     to="/admin"
-                     className={`px-3 py-1.5 md:px-5 md:py-2 flex items-center gap-2 text-sm font-medium rounded-md transition-all ${location.pathname.startsWith('/admin') ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
-                   >
-                     <LayoutDashboard className="w-4 h-4"/> Quản lý
-                   </Link>
-                 )}
-               </div>
-               <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-2 rounded-full hover:bg-slate-100 transition-colors" title="Đăng xuất">
-                 <LogOut className="w-5 h-5"/>
-               </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <Link to="/login" className="px-6 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-sm hover:bg-indigo-700 transition-colors">
+          <div className="flex items-center gap-2 md:gap-3">
+            {isAuthenticated ? (
+              <>
+                <div className="hidden rounded-full border border-slate-200 bg-white p-1 shadow-sm md:flex">
+                  <Link
+                    to="/"
+                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${!isAdminPath ? 'bg-slate-950 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    Học sinh
+                  </Link>
+                  {(user?.role === 'teacher' || user?.role === 'admin') && (
+                    <Link
+                      to="/admin"
+                      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${isAdminPath ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Quản trị
+                    </Link>
+                  )}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  title="Đăng xuất"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:inline">Đăng xuất</span>
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/15 transition-transform hover:-translate-y-0.5"
+              >
                 Đăng nhập
+                <ChevronRight className="h-4 w-4" />
               </Link>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 min-h-[calc(100vh-16rem)]">
-        <Routes>
-          <Route path="/login" element={<Login onLogin={(u) => { setUser(u); localStorage.setItem('hmath_user', JSON.stringify(u)); navigate(u.role === 'student' ? '/' : '/admin'); }} />} />
-          <Route path="/*" element={<StudentApp />} />
-          <Route path="/admin/*" element={<TeacherApp />} />
-        </Routes>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:py-8">
+        <Suspense fallback={<LoadingShell />}>
+          <Routes>
+            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            <Route path="/*" element={<StudentApp />} />
+            <Route path="/admin/*" element={<TeacherApp />} />
+          </Routes>
+        </Suspense>
       </main>
 
-      <footer className="bg-white border-t border-slate-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-indigo-600" />
-            <span className="font-bold text-blue-600">HMath Exam</span>
+      <footer className="border-t border-white/60 bg-white/70 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white">
+              <GraduationCap className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900">HMath Exam</div>
+              <div className="text-xs text-slate-500">Nền tảng luyện thi & quản lý đề toán</div>
+            </div>
           </div>
-          <p className="text-slate-500 text-sm">
-            © {new Date().getFullYear()} HMath Exam. Phát triển bởi HMath.
-          </p>
+          <p className="text-sm text-slate-500">© {new Date().getFullYear()} HMath. Designed for focused learning.</p>
         </div>
       </footer>
     </div>

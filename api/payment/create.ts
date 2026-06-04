@@ -12,12 +12,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { userId, packType } = req.body || {};
-  if (!userId || !packType) {
-    return res.status(400).json({ error: "Thiếu userId hoặc packType." });
+  const { userId, packType, planCode } = req.body || {};
+  const normalizedPackType = String(packType || (planCode === "vip_6m" ? "6m" : planCode === "vip_1y" ? "1y" : "1m"));
+  if (!userId || !normalizedPackType) {
+    return res.status(400).json({ error: "Thiếu userId hoặc packType/planCode." });
   }
 
-  const pack = PACK_CONFIG[packType];
+  const pack = PACK_CONFIG[normalizedPackType];
   if (!pack) {
     return res.status(400).json({ error: "Gói VIP không hợp lệ." });
   }
@@ -34,11 +35,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Giáo viên chưa kết nối cổng SePay API." });
     }
 
-    const amount = packType === "1m"
+    const amount = normalizedPackType === "1m"
       ? Number(settingsData.vip1MonthPrice || 50000)
-      : packType === "6m"
+      : normalizedPackType === "6m"
       ? Number(settingsData.vip6MonthPrice || 240000)
       : Number(settingsData.vip1YearPrice || 450000);
+
+    const originalPackType = normalizedPackType;
 
     const userSnap = await db.collection("users").doc(userId).get();
     if (!userSnap.exists) {
@@ -60,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       userName: userData.name || userData.fullName || "",
       amount,
       days: pack.days,
-      packType,
+      packType: originalPackType,
       label: pack.label,
       memo,
       status: "pending",
