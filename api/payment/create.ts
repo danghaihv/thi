@@ -66,7 +66,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.json({
       success: true,
+      intentId: intent.intentId,
       memo: intent.memo,
+      paymentMemo: intent.memo,
       amount,
       days: pack.days,
       label: pack.label,

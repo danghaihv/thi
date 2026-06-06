@@ -30,6 +30,53 @@ const dbId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
 
 const db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
 
+  // Optional server-side admin Firestore (preferred for backend operations).
+  // To enable, set either `FIREBASE_ADMIN_SERVICE_ACCOUNT` (JSON string) or
+  // `GOOGLE_APPLICATION_CREDENTIALS` (path to service account file) in env.
+  let useAdmin = false;
+  let adminDb: any = null;
+  try {
+    if (process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT) {
+      const admin = await import('firebase-admin');
+      const sa = JSON.parse(process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT);
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      adminDb = admin.firestore();
+      useAdmin = true;
+      console.log('Initialized firebase-admin from FIREBASE_ADMIN_SERVICE_ACCOUNT');
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      const admin = await import('firebase-admin');
+      admin.initializeApp();
+      adminDb = admin.firestore();
+      useAdmin = true;
+      console.log('Initialized firebase-admin from GOOGLE_APPLICATION_CREDENTIALS');
+    }
+  } catch (e: any) {
+    console.warn('firebase-admin not initialized (continuing with client SDK):', e && e.message);
+  }
+
+  const getDocByPath = async (collectionName: string, id: string) => {
+    if (useAdmin && adminDb) {
+      const ref = adminDb.collection(collectionName).doc(id);
+      const snap = await ref.get();
+      return snap;
+    }
+    const ref = doc(db, collectionName, id);
+    return await getDoc(ref);
+  };
+
+  const setDocByPath = async (collectionName: string, id: string, data: any, options?: { merge?: boolean }) => {
+    if (useAdmin && adminDb) {
+      const ref = adminDb.collection(collectionName).doc(id);
+      if (options && options.merge) {
+        await ref.set(data, { merge: true });
+      } else {
+        await ref.set(data);
+      }
+      return;
+    }
+    await setDoc(doc(db, collectionName, id), data, options || {});
+  };
+
 // Mock Users
 const users = [
   { id: "u_1", email: "admin@hmath.vn", password: "123456", role: "admin", name: "Super Admin" },
@@ -93,48 +140,67 @@ const submissions: any[] = [];
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const argPortIndex = process.argv.indexOf('--port');
+  const cliPort = argPortIndex !== -1 ? Number(process.argv[argPortIndex + 1]) : undefined;
+  const PORT = Number(process.env.PORT || cliPort || 3000);
+  const WS_PORT = Number(process.env.WS_PORT || 24679);
 
-  // Middleware: raw body untuk SePay webhook (HMAC verification)
-  // HARUS ở trước express.json() để keep original bytes
-  app.post('/api/webhook/sepay', express.raw({ type: '*/*' }), async (req, res) => {
-    try {
-      const crypto = await import('crypto');
-      const mysql = await import('mysql2/promise');
-      
-      const body = req.body.toString('utf8');
+// Middleware: raw body để SePay webhook (API Key hoặc HMAC verification)
+   // HARUS ở trước express.json() để keep original bytes
+   app.post('/api/webhook/sepay', express.raw({ type: '*/*' }), async (req, res) => {
+     try {
+       const crypto = await import('crypto');
+
+      const raw = req.body;
+      const body = (raw && raw.toString) ? raw.toString('utf8') : '';
       if (!body) {
         return res.status(400).json({ success: false, message: 'Empty body' });
       }
 
-      // 1. HMAC Verification
-      const signature = String(req.headers['x-sepay-signature'] || '').trim();
-      const timestamp = Number(req.headers['x-sepay-timestamp'] || 0);
-      const secret = process.env.SEPAY_WEBHOOK_SECRET || '';
+      // Support two webhook auth modes:
+      // - API Key mode: set SEPAY_API_KEY or SEPAY_WEBHOOK_TOKEN and send Authorization: ApiKey/Bearer or x-sepay-token
+      // - HMAC mode: set SEPAY_WEBHOOK_SECRET and provide x-sepay-signature + x-sepay-timestamp
+      const apiKey = String(process.env.SEPAY_API_KEY || process.env.SEPAY_WEBHOOK_TOKEN || '').trim();
+      if (apiKey) {
+        const authHeader = String(req.headers['authorization'] || '').trim();
+        const tokenHeader = String(req.headers['x-sepay-token'] || '').trim();
 
-      if (!signature || !timestamp || !secret) {
-        console.error('Missing headers or secret');
-        return res.status(400).json({ success: false, message: 'Missing headers' });
-      }
+        let ok = false;
+        if (authHeader.toLowerCase().startsWith('apikey ')) ok = authHeader.slice(7).trim() === apiKey;
+        else if (authHeader.startsWith('Bearer ')) ok = authHeader.slice(7).trim() === apiKey;
+        else if (tokenHeader) ok = tokenHeader === apiKey;
 
-      // 2. Chống replay: timestamp max 5 minutes
-      const nowSec = Math.floor(Date.now() / 1000);
-      if (Math.abs(nowSec - timestamp) > 300) {
-        console.warn('Timestamp expired:', timestamp);
-        return res.status(401).json({ success: false, message: 'Request expired' });
-      }
+        if (!ok) {
+          console.error('Unauthorized webhook API key.');
+          return res.status(401).json({ success: false, message: 'Unauthorized webhook API key.' });
+        }
+      } else {
+        // Fallback to HMAC verification for legacy setups
+        const signature = String(req.headers['x-sepay-signature'] || '').trim();
+        const timestamp = Number(req.headers['x-sepay-timestamp'] || 0);
+        const secret = String(process.env.SEPAY_WEBHOOK_SECRET || '');
 
-      // 3. Verify HMAC-SHA256
-      const expected = 'sha256=' + crypto.default.createHmac('sha256', secret)
-        .update(`${timestamp}.${body}`)
-        .digest('hex');
+        if (!signature || !timestamp || !secret) {
+          console.error('Missing headers or secret for HMAC verification');
+          return res.status(400).json({ success: false, message: 'Missing headers' });
+        }
 
-      const sig = Buffer.from(signature);
-      const exp = Buffer.from(expected);
-      
-      if (sig.length !== exp.length || !crypto.default.timingSafeEqual(sig, exp)) {
-        console.error('HMAC verification failed');
-        return res.status(401).json({ success: false, message: 'Invalid signature' });
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (Math.abs(nowSec - timestamp) > 300) {
+          console.warn('Timestamp expired:', timestamp);
+          return res.status(401).json({ success: false, message: 'Request expired' });
+        }
+
+        const expected = 'sha256=' + crypto.default.createHmac('sha256', secret)
+          .update(`${timestamp}.${body}`)
+          .digest('hex');
+
+        const sig = Buffer.from(signature);
+        const exp = Buffer.from(expected);
+        if (sig.length !== exp.length || !crypto.default.timingSafeEqual(sig, exp)) {
+          console.error('HMAC verification failed');
+          return res.status(401).json({ success: false, message: 'Invalid signature' });
+        }
       }
 
       // 4. Parse JSON
@@ -165,70 +231,44 @@ async function startServer() {
         return res.status(400).json({ success: false, message: `Mã thanh toán phải bắt đầu với ${codePrefix}` });
       }
 
-      // 5. MySQL: INSERT IGNORE to prevent duplicates
-      const pool = mysql.default.createPool({
-        host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASS || '',
-        database: process.env.DB_NAME || 'sepay_webhook',
+      // 5. Firestore: lookup payment intent by code (memo), update user vipExpiry
+      const amount = Number(data.transferAmount || 0);
+      const sepayTxId = String(data.id || data.transaction_id || '').trim();
+
+      // Try to find payment/intent by memo
+      const paymentSnap = await getDocByPath('payments', paymentCode);
+      if (!paymentSnap || (paymentSnap.exists !== undefined && !paymentSnap.exists)) {
+        console.warn(`Payment intent not found for code: ${paymentCode}`);
+        return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn chờ xử lý.' });
+      }
+
+      const paymentData: any = paymentSnap.data();
+      const userId = paymentData.userId;
+      const expectedAmount = Number(paymentData.amount || 0);
+      const days = Number(paymentData.days || 0);
+
+      if (!userId || !days) {
+        console.error('Invalid payment data:', paymentData);
+        return res.status(400).json({ success: false, message: 'Dữ liệu hóa đơn không hợp lệ.' });
+      }
+
+      if (amount < expectedAmount) {
+        console.warn(`Insufficient amount. Expected: ${expectedAmount}, Got: ${amount}`);
+        return res.status(400).json({ success: false, message: 'Số tiền nhận được nhỏ hơn hóa đơn yêu cầu.' });
+      }
+
+      // Call applyVipUpgrade helper
+      const upgraded = await applyVipUpgrade({ userId, memo: paymentCode, amount: expectedAmount, days, sepayTxId });
+
+      console.log(`SePay webhook processed: ${data.id}, upgraded VIP`);
+      res.json({
+        success: true,
+        message: upgraded.alreadyProcessed ? 'Hóa đơn đã xử lý trước đó.' : 'Đã xử lý webhook và nâng cấp VIP thành công.',
+        vipExpiry: upgraded.vipExpiry
       });
 
-      const conn = await pool.getConnection();
-      try {
-        const [result] = await conn.execute(
-          `INSERT IGNORE INTO transactions 
-           (sepay_id, gateway, transaction_date, account_number, sub_account,
-            code, amount_in, amount_out, accumulated, content, reference_code, body)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            data.id,
-            data.gateway || '',
-            data.transactionDate || new Date(),
-            data.accountNumber || '',
-            data.subAccount || '',
-            paymentCode,
-            data.transferType === 'in' ? (data.transferAmount || 0) : 0,
-            data.transferType === 'out' ? (data.transferAmount || 0) : 0,
-            data.accumulated || 0,
-            paymentCode,
-            data.referenceCode || '',
-            body,
-          ]
-        );
-
-        // Transaction already processed
-        if ((result as any).affectedRows === 0) {
-          console.log('Transaction already processed:', data.id);
-          res.json({ success: true });
-          return;
-        }
-
-        // Business logic: only on first insert - update orders with matching code
-        if (data.transferType === 'in' && paymentCode) {
-          const transferAmount = Number(data.transferAmount || 0);
-          console.log(`Processing transfer: ${paymentCode}, amount: ${transferAmount}`);
-          
-          // UPDATE orders if amount sufficient
-          const [updateResult] = await conn.execute(
-            `UPDATE orders 
-             SET status = 'paid', paid_at = NOW()
-             WHERE code = ? AND status = 'pending' AND amount <= ?`,
-            [paymentCode, transferAmount]
-          );
-
-          if ((updateResult as any).affectedRows > 0) {
-            console.log(`Order ${paymentCode} marked as paid`);
-          }
-        }
-
-        console.log(`SePay webhook processed: ${data.id}`);
-        res.json({ success: true });
-      } finally {
-        conn.release();
-        pool.end();
-      }
     } catch (err) {
-      console.error('SePay webhook error:', err);
+      console.error('SePay webhook outer error:', err);
       res.status(500).json({ success: false, message: 'Internal server error' });
     }
   });
@@ -242,14 +282,13 @@ async function startServer() {
   });
 
   const applyVipUpgrade = async ({ userId, memo, amount, days, sepayTxId }: { userId: string; memo: string; amount: number; days: number; sepayTxId?: string }) => {
-    const paymentSnap = await getDoc(doc(db, 'payments', memo));
-    if (paymentSnap.exists() && paymentSnap.data().status === 'completed') {
+    const paymentSnap: any = await getDocByPath('payments', memo);
+    if (paymentSnap.exists && paymentSnap.exists === true && paymentSnap.data && paymentSnap.data().status === 'completed') {
       return { alreadyProcessed: true, vipExpiry: paymentSnap.data().vipExpiry };
     }
 
-    const userRef = doc(db, 'users', userId);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
+    const userSnap: any = await getDocByPath('users', userId);
+    if (!userSnap || (userSnap.exists !== undefined && !userSnap.exists)) {
       throw new Error('Không tìm thấy thông tin tài khoản học sinh.');
     }
 
@@ -259,12 +298,12 @@ async function startServer() {
     const newExpiryDate = new Date(baseTime + days * 24 * 60 * 60 * 1000);
     const newExpiryStr = newExpiryDate.toISOString();
 
-    await setDoc(userRef, {
+    await setDocByPath('users', userId, {
       vipExpiry: newExpiryStr,
       vipType: `${days} ngày`
     }, { merge: true });
 
-    await setDoc(doc(db, 'payments', memo), {
+    await setDocByPath('payments', memo, {
       userId,
       userEmail: userData.email || '',
       userName: userData.name || '',
@@ -299,9 +338,8 @@ async function startServer() {
     }
 
     try {
-      const settingsRef = doc(db, 'settings', 'global');
-      const settingsSnap = await getDoc(settingsRef);
-      if (!settingsSnap.exists()) {
+      const settingsSnap: any = await getDocByPath('settings', 'global');
+      if (!settingsSnap || (settingsSnap.exists !== undefined && !settingsSnap.exists)) {
         return res.status(400).json({ error: 'Hệ thống chưa thiết lập cài đặt thanh toán.' });
       }
       const settingsData: any = settingsSnap.data();
@@ -312,18 +350,18 @@ async function startServer() {
           ? Number(settingsData.vip6MonthPrice || 240000)
           : Number(settingsData.vip1YearPrice || 450000);
 
-      const userRef = doc(db, 'users', userId);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
+      const userSnap: any = await getDocByPath('users', userId);
+      if (!userSnap || (userSnap.exists !== undefined && !userSnap.exists)) {
         return res.status(404).json({ error: 'Không tìm thấy tài khoản học sinh.' });
       }
 
       const userData: any = userSnap.data();
       const userName = (userData.fullName || userData.name || 'USER').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20);
       const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const memo = `HM${userName}${randomCode}`;
+      const codePrefix = process.env.PAYMENT_CODE_PREFIX || 'HMATH';
+      const memo = `${codePrefix}${userName}${randomCode}`;
 
-      await setDoc(doc(db, 'payments', memo), {
+      await setDocByPath('payments', memo, {
         userId,
         userEmail: userData.email || '',
         userName: userData.name || userData.fullName || '',
@@ -339,7 +377,9 @@ async function startServer() {
 
       return res.json({
         success: true,
+        intentId: memo,
         memo,
+        paymentMemo: memo,
         amount,
         days: pack.days,
         label: pack.label,
@@ -358,9 +398,8 @@ async function startServer() {
 
   app.get("/api/payment/pricing", async (req, res) => {
     try {
-      const settingsRef = doc(db, "settings", "global");
-      const settingsSnap = await getDoc(settingsRef);
-      if (!settingsSnap.exists()) {
+      const settingsSnap: any = await getDocByPath('settings', 'global');
+      if (!settingsSnap || (settingsSnap.exists !== undefined && !settingsSnap.exists)) {
         return res.json({
           vip1MonthPrice: 50000,
           vip6MonthPrice: 240000,
