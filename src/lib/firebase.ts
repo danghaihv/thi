@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 // Use Environment Variables (like on Vercel) as priority, fallback to firebase-applet-config.json
@@ -22,24 +22,14 @@ const app = initializeApp(firebaseConfig);
 const hasEnvConfig = !!metaEnv.VITE_FIREBASE_PROJECT_ID;
 const dbId = metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
-export const db = dbId ? getFirestore(app, dbId) : getFirestore(app);
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  ...(dbId ? { databaseId: dbId } : {}),
+});
 export const auth = getAuth(app);
 
-// Enable offline persistence
 setPersistence(auth, browserLocalPersistence)
-  .then(() => console.log('Auth persistence enabled'))
   .catch((err) => console.warn('Could not enable auth persistence:', err));
-
-// Enable Firestore offline persistence
-enableIndexedDbPersistence(db)
-  .then(() => console.log('Firestore persistence enabled'))
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore persistence failed: multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore persistence not supported on this browser');
-    }
-  });
 
 // Sync localStorage user with Firebase auth state
 onAuthStateChanged(auth, (firebaseUser) => {

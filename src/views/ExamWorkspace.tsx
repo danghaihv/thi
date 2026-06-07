@@ -53,6 +53,7 @@ export default function ExamWorkspace() {
   const [checkLimitError, setCheckLimitError] = useState<string | null>(null);
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [showVipModalToViewSolution, setShowVipModalToViewSolution] = useState(false);
+  const handleSubmitRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (!id) return;
@@ -209,13 +210,15 @@ export default function ExamWorkspace() {
     };
   }, [result]);
 
+  useEffect(() => { handleSubmitRef.current = handleSubmit; });
+
   useEffect(() => {
     if (exam && !result && timeLeft > 0) {
       const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
       return () => clearInterval(timer);
     } else if (timeLeft === 0 && exam && !result) {
       setShowConfirmSubmit(false);
-      handleSubmit();
+      handleSubmitRef.current();
     }
   }, [timeLeft, exam, result]);
 

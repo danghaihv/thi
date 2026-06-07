@@ -396,6 +396,21 @@ async function startServer() {
   app.post('/api/payment/create', createPaymentIntent);
   app.post('/api/payment/intents', createPaymentIntent);
 
+  app.get('/api/payment/intents/status', async (req, res) => {
+    const intentId = String(req.query.intentId || '').trim();
+    if (!intentId) return res.status(400).json({ error: 'Thiếu intentId.' });
+    try {
+      const snap: any = await getDocByPath('payments', intentId);
+      if (!snap || (snap.exists !== undefined && !snap.exists)) {
+        return res.status(404).json({ error: 'Không tìm thấy hóa đơn.' });
+      }
+      const data = snap.data();
+      return res.json({ intent: { status: data.status, vipExpiry: data.vipExpiry || null } });
+    } catch (err: any) {
+      return res.status(500).json({ error: 'Lỗi kiểm tra trạng thái: ' + err.message });
+    }
+  });
+
   app.get("/api/payment/pricing", async (req, res) => {
     try {
       const settingsSnap: any = await getDocByPath('settings', 'global');

@@ -50,7 +50,7 @@ export function StudentUpgradeHub() {
       }
       const setSnap = await getDoc(doc(db, 'settings', 'global'));
       if (setSnap.exists()) { const sData = setSnap.data() as any; setPricing((prev) => ({ ...prev, vip1MonthPrice: sData.vip1MonthPrice ?? 50000, vip6MonthPrice: sData.vip6MonthPrice ?? 240000, vip1YearPrice: sData.vip1YearPrice ?? 450000, sepayBankId: sData.sepayBankId || '', sepayAccountNo: sData.sepayAccountNo || '', sepayAccountName: sData.sepayAccountName || '' })); }
-      const q = query(collection(db, 'payment_intents'), where('userId', '==', auth.currentUser.uid));
+      const q = query(collection(db, 'payments'), where('userId', '==', auth.currentUser.uid));
       const subSnap = await getDocs(q);
       const items: any[] = []; subSnap.forEach((snapshotDoc) => items.push({ id: snapshotDoc.id, ...snapshotDoc.data() }));
       items.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime());

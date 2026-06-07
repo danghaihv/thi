@@ -16,6 +16,12 @@ export default function StudentHome() {
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'Cơ bản' | 'Trung bình' | 'Nâng cao'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterMode, difficultyFilter, categoryFilter, searchQuery]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -122,13 +128,16 @@ export default function StudentHome() {
     };
   }, [authReady, isAuthenticated]);
 
-  const filtered = exams.filter((e) => {
+  const allFiltered = exams.filter((e) => {
     const matchGrade = filterMode === 'all' || String(e.grade) === String(filterMode);
     const matchDifficulty = difficultyFilter === 'all' || e.difficulty === difficultyFilter;
     const matchCategory = categoryFilter === 'all' || e.category === categoryFilter;
     const matchQuery = (e.title || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchGrade && matchDifficulty && matchCategory && matchQuery;
-  }).slice(0, 15);
+  });
+
+  const totalPages = Math.ceil(allFiltered.length / PAGE_SIZE);
+  const filtered = allFiltered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
@@ -155,9 +164,9 @@ export default function StudentHome() {
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar sm:pb-0">
             <div className="px-2.5 py-2 font-semibold text-slate-400 text-xs uppercase flex items-center gap-1 flex-shrink-0">Khối:</div>
             <button onClick={() => setFilterMode('all')} className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-colors ${filterMode === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600 bg-slate-50'}`}>Tất cả</button>
-            {[5, 6, 7, 8, 9].map((grade) => (
+            {[6, 7, 8, 9].map((grade) => (
               <button key={grade} onClick={() => setFilterMode(grade)} className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap transition-colors ${filterMode === grade ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600 bg-slate-50'}`}>
-                {grade === 5 ? 'Thi vào lớp 6' : `Lớp ${grade}`}
+                Lớp {grade}
               </button>
             ))}
           </div>
@@ -192,10 +201,33 @@ export default function StudentHome() {
           <button onClick={() => window.location.reload()} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm text-sm">Tải lại trang</button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filtered.map((exam) => <ExamCard key={exam.id} exam={exam} />)}
-          {filtered.length === 0 && <div className="col-span-full py-20 text-center text-slate-500 font-medium bg-white rounded-3xl border border-slate-100">Không có đề thi nào cho bộ lọc này.</div>}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filtered.map((exam) => <ExamCard key={exam.id} exam={exam} />)}
+            {filtered.length === 0 && <div className="col-span-full py-20 text-center text-slate-500 font-medium bg-white rounded-3xl border border-slate-100">Không có đề thi nào cho bộ lọc này.</div>}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+              >
+                Trang trước
+              </button>
+              <span className="px-4 py-2 text-sm font-semibold text-slate-600">
+                Trang {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
