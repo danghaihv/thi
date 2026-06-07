@@ -57,9 +57,17 @@ export async function findIntentByMemo(memo: string) {
 export async function hasProcessedTx(sepayTxId: string) {
   if (!sepayTxId) return false;
   const db = getDb();
+  
+  // Kiểm tra trong payment_intents
+  const intentByTx = await db.collection("payment_intents")
+    .where("sepayTxId", "==", sepayTxId)
+    .limit(1)
+    .get();
+  if (!intentByTx.empty) return true;
+  
+  // Kiểm tra trong payments (legacy)
   const existingByTx = await db.collection("payments")
     .where("sepayTxId", "==", sepayTxId)
-    .where("status", "==", "completed")
     .limit(1)
     .get();
   return !existingByTx.empty;

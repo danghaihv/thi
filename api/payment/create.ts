@@ -25,6 +25,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getDb();
+    if (!db || !db.collection) {
+      return res.status(500).json({ error: "Lỗi kết nối cơ sở dữ liệu: Firebase chưa khởi tạo." });
+    }
+    
     const settingsSnap = await db.collection("settings").doc("global").get();
     if (!settingsSnap.exists) {
       return res.status(400).json({ error: "Hệ thống chưa thiết lập cài đặt thanh toán." });
