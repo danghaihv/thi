@@ -80,7 +80,11 @@ export function StudentUpgradeHub() {
       const planCode = packType === '1m' ? 'vip_1m' : packType === '6m' ? 'vip_6m' : 'vip_1y';
       const response = await fetch('/api/payment/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: uid, packType, planCode }) });
       const data = await response.json();
+      
+      console.log("[v0] Payment create response:", data);
+      
       if (!response.ok) {
+        console.error("[v0] Payment create failed:", data);
         setCheckMessage(data.error || data.message || 'Không thể tạo hóa đơn. Vui lòng thử lại.');
         setCheckoutStatus('error');
         return;
@@ -104,7 +108,34 @@ export function StudentUpgradeHub() {
     }
   };
   const handleCopy = async (text: string, label: string) => { await navigator.clipboard.writeText(text); setCopiedField(label); setTimeout(() => setCopiedField(null), 2000); };
-  useEffect(() => { if (!isCheckoutOpen || !paymentIntentId) return; const interval = setInterval(() => fetchUserAndStats(), 5000); return () => clearInterval(interval); }, [isCheckoutOpen, paymentIntentId]);
+  useEffect(() => {
+    if (!isCheckoutOpen || !paymentIntentId) return;
+    
+    const checkPaymentStatus = async () => {
+      try {
+        const response = await fetch(`/api/payment/verify?intentId=${encodeURIComponent(paymentIntentId)}`);
+        const data = await response.json();
+        
+        if (data.success && data.intent) {
+          const intent = data.intent;
+          
+          if (intent.status === 'fulfilled' || intent.status === 'completed' || intent.status === 'paid') {
+            setCheckMessage(`✓ Nâng cấp thành công! VIP hết hạn: ${new Date(intent.vipExpiry).toLocaleDateString('vi-VN')}`);
+            setCheckoutStatus('ready');
+            fetchUserAndStats();
+          } else if (intent.status === 'expired') {
+            setCheckMessage('Hóa đơn đã hết hạn. Vui lòng tạo hóa đơn mới.');
+            setCheckoutStatus('error');
+          }
+        }
+      } catch (err) {
+        console.error("[v0] Check payment status error:", err);
+      }
+    };
+    
+    const interval = setInterval(checkPaymentStatus, 3000);
+    return () => clearInterval(interval);
+  }, [isCheckoutOpen, paymentIntentId]);
 
   if (isLoadingUser && !user) return <div className="py-20 text-center text-sm font-medium text-slate-500 animate-pulse">Đang tải thông tin...</div>;
   if (!user) return <div className="py-20 text-center text-sm font-medium text-slate-500">Không thể tải thông tin tài khoản.</div>;

@@ -41,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const payload: any = req.body || {};
+    console.log("[v0] SePay webhook received:", JSON.stringify(payload));
+    
     const memo = String(payload.content || payload.transaction_content || payload.description || "").trim().toUpperCase();
     const amount = Number(payload.transferAmount || payload.amount || payload.amount_in || 0);
     const sepayTxId = String(payload.id || payload.transaction_id || payload.referenceCode || "").trim();
