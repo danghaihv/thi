@@ -30,6 +30,7 @@ const dbId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
 
 const db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
 
+async function startServer() {
   // Optional server-side admin Firestore (preferred for backend operations).
   // To enable, set either `FIREBASE_ADMIN_SERVICE_ACCOUNT` (JSON string) or
   // `GOOGLE_APPLICATION_CREDENTIALS` (path to service account file) in env.
@@ -138,7 +139,6 @@ const exams = [
 
 const submissions: any[] = [];
 
-async function startServer() {
   const app = express();
   const argPortIndex = process.argv.indexOf('--port');
   const cliPort = argPortIndex !== -1 ? Number(process.argv[argPortIndex + 1]) : undefined;
