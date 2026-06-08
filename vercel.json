@@ -1,13 +1,39 @@
 {
   "cleanUrls": true,
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
   "rewrites": [
     {
       "source": "/api/webhook/sepay",
       "destination": "/api/webhook/sepay"
     },
     {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
     }
   ]
 }

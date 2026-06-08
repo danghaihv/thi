@@ -569,10 +569,32 @@ const submissions: any[] = [];
       appType: "spa",
     });
     app.use(vite.middlewares);
+    
+    // Handle client-side routes in development - fallback to index.html
+    app.get('*', async (req, res) => {
+      try {
+        const url = req.originalUrl;
+        // Skip API routes and static files
+        if (url.startsWith('/api/') || url.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i)) {
+          return res.status(404).send('Not found');
+        }
+        const template = await vite.transformIndexHtml(url, fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8'));
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        console.error('Vite error:', e.message);
+        res.status(500).end();
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // Handle client-side routes in production - fallback to index.html
     app.get('*', (req, res) => {
+      const url = req.originalUrl;
+      // Skip API routes
+      if (url.startsWith('/api/')) {
+        return res.status(404).json({ error: 'Not found' });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
