@@ -14,7 +14,7 @@ export default defineConfig(() => {
     build: {
       // SPA routing support
       target: 'esnext',
-      minify: 'terser' as const,
+      minify: 'esbuild',
       sourcemap: false,
     },
     server: {
